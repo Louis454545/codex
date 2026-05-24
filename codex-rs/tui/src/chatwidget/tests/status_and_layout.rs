@@ -623,7 +623,7 @@ async fn status_line_legacy_limit_items_prefer_matching_windows() {
 }
 
 #[tokio::test]
-async fn status_line_five_hour_item_indicates_ask_user_mode_below_five_percent() {
+async fn status_line_five_hour_item_indicates_wait_user_mode_below_five_percent() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
@@ -642,7 +642,7 @@ async fn status_line_five_hour_item_indicates_ask_user_mode_below_five_percent()
 
     assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::FiveHourLimit),
-        Some("5h 4% ask-user".to_string())
+        Some("5h 4% wait-user".to_string())
     );
 }
 

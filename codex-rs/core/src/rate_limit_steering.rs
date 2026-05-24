@@ -4,20 +4,20 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::protocol::RateLimitSnapshot;
 use codex_protocol::protocol::RateLimitWindow;
 
-const ASK_USER_REMAINING_THRESHOLD_PERCENT: f64 = 5.0;
+const WAIT_USER_REMAINING_THRESHOLD_PERCENT: f64 = 5.0;
 const FIVE_HOURS_MINUTES: i64 = 5 * 60;
 
-pub(crate) fn five_hour_ask_user_steering_item(
+pub(crate) fn five_hour_wait_user_steering_item(
     snapshot: &RateLimitSnapshot,
 ) -> Option<ResponseInputItem> {
     let window = five_hour_window(snapshot)?;
     let remaining_percent = remaining_percent(window);
-    if remaining_percent >= ASK_USER_REMAINING_THRESHOLD_PERCENT {
+    if remaining_percent >= WAIT_USER_REMAINING_THRESHOLD_PERCENT {
         return None;
     }
 
     Some(
-        RateLimitContext::new(five_hour_ask_user_prompt(remaining_percent))
+        RateLimitContext::new(five_hour_wait_user_prompt(remaining_percent))
             .into_response_input_item(),
     )
 }
@@ -71,10 +71,10 @@ fn remaining_percent(window: &RateLimitWindow) -> f64 {
     (100.0 - window.used_percent).clamp(0.0, 100.0)
 }
 
-fn five_hour_ask_user_prompt(remaining_percent: f64) -> String {
+fn five_hour_wait_user_prompt(remaining_percent: f64) -> String {
     format!(
         "The 5-hour usage window has {remaining_percent:.1}% remaining, which is below the 5% threshold.\n\n\
-Do not finish the turn with a final answer while this threshold is active. Before you would otherwise finish, call request_user_input and wait for the user's response. Ask one concise continuation question so the user can provide the next instruction, then continue in this same turn using the tool response."
+Do not finish the turn with a final answer while this threshold is active. After your current tool-call sequence and work for this step are otherwise finished, call wait_user as the final tool call. The user's next prompt input will be returned as the wait_user tool result; continue from that tool result in the same turn."
     )
 }
 
@@ -101,7 +101,7 @@ mod tests {
         };
 
         let Some(ResponseInputItem::Message { content, .. }) =
-            five_hour_ask_user_steering_item(&snapshot)
+            five_hour_wait_user_steering_item(&snapshot)
         else {
             panic!("expected steering item");
         };
@@ -110,7 +110,7 @@ mod tests {
         };
 
         assert!(text.contains("4.0% remaining"));
-        assert!(text.contains("request_user_input"));
+        assert!(text.contains("wait_user"));
         assert!(text.contains("Do not finish the turn"));
     }
 
@@ -129,7 +129,7 @@ mod tests {
             rate_limit_reached_type: None,
         };
 
-        assert_eq!(None, five_hour_ask_user_steering_item(&snapshot));
+        assert_eq!(None, five_hour_wait_user_steering_item(&snapshot));
     }
 
     fn window(used_percent: f64, window_minutes: Option<i64>) -> RateLimitWindow {

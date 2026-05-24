@@ -109,7 +109,7 @@ async fn request_user_input_round_trip_for_mode(mode: ModeKind) -> anyhow::Resul
 
     let first_response = sse(vec![
         ev_response_created("resp-1"),
-        ev_function_call(call_id, "request_user_input", &request_args),
+        ev_function_call(call_id, "wait_user", &request_args),
         ev_rate_limits(),
         ev_completed("resp-1"),
     ]);
@@ -260,7 +260,7 @@ async fn request_user_input_interrupt_emits_deferred_token_count() -> anyhow::Re
 
     let response = sse(vec![
         ev_response_created("resp-interrupt"),
-        ev_function_call(call_id, "request_user_input", &request_args),
+        ev_function_call(call_id, "wait_user", &request_args),
         ev_completed_with_tokens("resp-interrupt", /*total_tokens*/ 77),
     ]);
     responses::mount_sse_once(&server, response).await;
@@ -355,7 +355,7 @@ where
 
     let first_response = sse(vec![
         ev_response_created("resp-1"),
-        ev_function_call(&call_id, "request_user_input", &request_args),
+        ev_function_call(&call_id, "wait_user", &request_args),
         ev_completed("resp-1"),
     ]);
     responses::mount_sse_once(&server, first_response).await;
@@ -398,7 +398,7 @@ where
     assert_eq!(success, None);
     assert_eq!(
         output,
-        format!("request_user_input is unavailable in {mode_name} mode")
+        format!("wait_user is unavailable in {mode_name} mode")
     );
 
     Ok(())

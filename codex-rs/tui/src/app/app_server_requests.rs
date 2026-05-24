@@ -12,6 +12,9 @@ use codex_app_server_protocol::McpServerElicitationRequestResponse;
 use codex_app_server_protocol::PermissionsRequestApprovalResponse;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ServerRequest;
+use codex_app_server_protocol::ToolRequestUserInputAnswer;
+use codex_app_server_protocol::ToolRequestUserInputResponse;
+use codex_app_server_protocol::UserInput;
 
 impl App {
     pub(super) async fn reject_app_server_request(
@@ -38,6 +41,12 @@ impl App {
 pub(super) struct AppServerRequestResolution {
     pub(super) request_id: AppServerRequestId,
     pub(super) result: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct WaitUserResolution {
+    pub(super) request: AppServerRequestResolution,
+    pub(super) outbound_op: AppCommand,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +123,11 @@ impl PendingAppServerRequests {
                     .push_back(PendingUserInputRequest {
                         item_id: params.item_id.clone(),
                         request_id: request_id.clone(),
+                        question_ids: params
+                            .questions
+                            .iter()
+                            .map(|question| question.id.clone())
+                            .collect(),
                     });
                 None
             }
@@ -259,6 +273,47 @@ impl PendingAppServerRequests {
         Ok(resolution)
     }
 
+    pub(super) fn take_wait_user_resolution_for_turn(
+        &mut self,
+        turn_id: &str,
+        input: &[UserInput],
+    ) -> Result<Option<WaitUserResolution>, String> {
+        let Some(queue) = self.user_inputs.get_mut(turn_id) else {
+            return Ok(None);
+        };
+        if queue
+            .front()
+            .is_none_or(|pending| !pending.question_ids.is_empty())
+        {
+            return Ok(None);
+        }
+
+        let Some(pending) = queue.pop_front() else {
+            return Err("front pending wait_user request should exist".to_string());
+        };
+        if queue.is_empty() {
+            self.user_inputs.remove(turn_id);
+        }
+
+        let text = wait_user_text_from_input(input);
+        let response = ToolRequestUserInputResponse {
+            answers: HashMap::from([(
+                "message".to_string(),
+                ToolRequestUserInputAnswer {
+                    answers: vec![text],
+                },
+            )]),
+        };
+        Ok(Some(WaitUserResolution {
+            request: AppServerRequestResolution {
+                request_id: pending.request_id,
+                result: serde_json::to_value(response.clone())
+                    .map_err(|err| format!("failed to serialize wait_user response: {err}"))?,
+            },
+            outbound_op: AppCommand::user_input_answer(turn_id.to_string(), response),
+        }))
+    }
+
     pub(super) fn resolve_notification(
         &mut self,
         request_id: &AppServerRequestId,
@@ -385,6 +440,21 @@ impl PendingAppServerRequests {
 struct PendingUserInputRequest {
     item_id: String,
     request_id: AppServerRequestId,
+    question_ids: Vec<String>,
+}
+
+fn wait_user_text_from_input(input: &[UserInput]) -> String {
+    input
+        .iter()
+        .filter_map(|item| match item {
+            UserInput::Text { text, .. } => Some(text.as_str()),
+            UserInput::Image { .. }
+            | UserInput::LocalImage { .. }
+            | UserInput::Skill { .. }
+            | UserInput::Mention { .. } => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -417,6 +487,7 @@ mod tests {
     use codex_app_server_protocol::ToolRequestUserInputAnswer;
     use codex_app_server_protocol::ToolRequestUserInputParams;
     use codex_app_server_protocol::ToolRequestUserInputResponse;
+    use codex_app_server_protocol::UserInput;
     use codex_protocol::models::FileSystemPermissions;
     use codex_protocol::models::NetworkPermissions;
     use codex_protocol::request_permissions::RequestPermissionProfile;
@@ -593,6 +664,64 @@ mod tests {
                     },
                 ))
                 .collect(),
+            }
+        );
+    }
+
+    #[test]
+    fn wait_user_resolution_uses_next_text_prompt_for_tool_result() {
+        let mut pending = PendingAppServerRequests::default();
+        assert_eq!(
+            pending.note_server_request(&ServerRequest::ToolRequestUserInput {
+                request_id: AppServerRequestId::Integer(8),
+                params: ToolRequestUserInputParams {
+                    thread_id: "thread-1".to_string(),
+                    turn_id: "turn-1".to_string(),
+                    item_id: "tool-1".to_string(),
+                    questions: Vec::new(),
+                },
+            }),
+            None
+        );
+
+        let wait_user = pending
+            .take_wait_user_resolution_for_turn(
+                "turn-1",
+                &[UserInput::Text {
+                    text: "continue from here".to_string(),
+                    text_elements: Vec::new(),
+                }],
+            )
+            .expect("wait_user response should serialize")
+            .expect("wait_user request should be pending");
+
+        assert_eq!(wait_user.request.request_id, AppServerRequestId::Integer(8));
+        assert_eq!(
+            serde_json::from_value::<ToolRequestUserInputResponse>(wait_user.request.result)
+                .expect("wait_user response should decode"),
+            ToolRequestUserInputResponse {
+                answers: std::iter::once((
+                    "message".to_string(),
+                    ToolRequestUserInputAnswer {
+                        answers: vec!["continue from here".to_string()],
+                    },
+                ))
+                .collect(),
+            }
+        );
+        assert_eq!(
+            wait_user.outbound_op,
+            Op::UserInputAnswer {
+                id: "turn-1".to_string(),
+                response: ToolRequestUserInputResponse {
+                    answers: std::iter::once((
+                        "message".to_string(),
+                        ToolRequestUserInputAnswer {
+                            answers: vec!["continue from here".to_string()],
+                        },
+                    ))
+                    .collect(),
+                },
             }
         );
     }

@@ -27,10 +27,12 @@ fn default_mode_instructions_replace_mode_names_placeholder() {
     let expected_snippet = format!("Known mode names are {known_mode_names}.");
     assert!(default_instructions.contains(&expected_snippet));
 
-    assert!(default_instructions.contains(
-        "Use the `request_user_input` tool only when it is listed in the available tools"
-    ));
     assert!(
-        default_instructions.contains("ask the user directly with a concise plain-text question")
+        default_instructions
+            .contains("Use the `wait_user` tool only when it is listed in the available tools")
+    );
+    assert!(
+        default_instructions
+            .contains("Use `wait_user` only as the final tool call after the current work")
     );
 }

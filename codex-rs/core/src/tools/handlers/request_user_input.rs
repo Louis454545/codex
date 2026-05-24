@@ -52,9 +52,9 @@ impl ToolExecutor<ToolInvocation> for RequestUserInputHandler {
         };
 
         if turn.session_source.is_non_root_agent() {
-            return Err(FunctionCallError::RespondToModel(
-                "request_user_input can only be used by the root thread".to_string(),
-            ));
+            return Err(FunctionCallError::RespondToModel(format!(
+                "{REQUEST_USER_INPUT_TOOL_NAME} can only be used by the root thread"
+            )));
         }
 
         let mode = session.collaboration_mode().await.mode;

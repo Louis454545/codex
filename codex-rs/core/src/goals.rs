@@ -1794,7 +1794,7 @@ mod tests {
         assert!(prompt.contains("<objective>\nfinish the stack\n</objective>"));
         assert!(prompt.contains("Token budget: 10000"));
         assert!(prompt.contains("Tokens used: 10100"));
-        assert!(prompt.contains("request_user_input"));
+        assert!(prompt.contains("wait_user"));
         assert!(prompt.contains("may continue past this budget"));
         assert!(!prompt.contains("status \"paused\""));
     }

@@ -8549,8 +8549,8 @@ async fn pending_request_user_input_does_not_spawn_extra_goal_continuation() -> 
             sse(vec![
                 ev_response_created("resp-3"),
                 ev_function_call(
-                    "call-ask-user",
-                    "request_user_input",
+                    "call-wait-user",
+                    "wait_user",
                     r#"{"questions":[{"header":"Choice","id":"next_step","question":"Pick one","options":[{"label":"Outline","description":"Start with an outline."},{"label":"Draft","description":"Write a full draft."}]}]}"#,
                 ),
                 ev_completed("resp-3"),
@@ -8782,7 +8782,7 @@ async fn over_budget_accounting_steers_active_turn_without_aborting() -> anyhow:
     };
     assert!(text.starts_with("<goal_context>"));
     assert!(text.trim_end().ends_with("</goal_context>"));
-    assert!(text.contains("request_user_input"));
+    assert!(text.contains("wait_user"));
     assert!(text.contains("may continue past this budget"));
     assert!(sess.active_turn.lock().await.is_some());
     while let Ok(event) = rx.try_recv() {

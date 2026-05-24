@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[tokio::test]
-async fn multi_agent_v2_request_user_input_rejects_subagent_threads() {
+async fn multi_agent_v2_wait_user_rejects_subagent_threads() {
     let (session, mut turn) = make_session_and_context().await;
     turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
         parent_thread_id: ThreadId::new(),
@@ -57,12 +57,12 @@ async fn multi_agent_v2_request_user_input_rejects_subagent_threads() {
     .await;
 
     let Err(err) = result else {
-        panic!("sub-agent request_user_input should fail");
+        panic!("sub-agent wait_user should fail");
     };
     assert_eq!(
         err,
         FunctionCallError::RespondToModel(
-            "request_user_input can only be used by the root thread".to_string(),
+            "wait_user can only be used by the root thread".to_string(),
         )
     );
 }

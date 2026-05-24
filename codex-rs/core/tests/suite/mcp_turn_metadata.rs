@@ -227,7 +227,7 @@ async fn mcp_tool_call_metadata_records_prior_request_user_input_tool() -> Resul
                 ev_response_created("resp-1"),
                 ev_function_call(
                     request_user_input_call_id,
-                    "request_user_input",
+                    "wait_user",
                     &request_user_input_args,
                 ),
                 ev_completed("resp-1"),

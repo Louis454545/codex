@@ -413,6 +413,29 @@ impl App {
     ) -> Result<()> {
         crate::session_log::log_outbound_op(&op);
 
+        if let Some(resolution) = self
+            .try_resolve_wait_user_from_user_turn(thread_id, &op)
+            .await?
+        {
+            match app_server
+                .resolve_server_request(resolution.request.request_id, resolution.request.result)
+                .await
+            {
+                Ok(()) => {
+                    self.note_thread_outbound_op(thread_id, &resolution.outbound_op)
+                        .await;
+                    self.refresh_side_parent_status_from_store(thread_id).await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    self.chat_widget.add_error_message(format!(
+                        "Failed to resolve wait_user request for thread {thread_id}: {err}"
+                    ));
+                    return Ok(());
+                }
+            }
+        }
+
         if self
             .try_resolve_app_server_request(app_server, thread_id, &op)
             .await?
@@ -435,6 +458,22 @@ impl App {
         self.chat_widget
             .add_error_message(format!("Not available in TUI yet for thread {thread_id}."));
         Ok(())
+    }
+
+    async fn try_resolve_wait_user_from_user_turn(
+        &mut self,
+        thread_id: ThreadId,
+        op: &AppCommand,
+    ) -> Result<Option<super::app_server_requests::WaitUserResolution>> {
+        let AppCommand::UserTurn { items, .. } = op else {
+            return Ok(None);
+        };
+        let Some(turn_id) = self.active_turn_id_for_thread(thread_id).await else {
+            return Ok(None);
+        };
+        self.pending_app_server_requests
+            .take_wait_user_resolution_for_turn(&turn_id, items)
+            .map_err(|err| color_eyre::eyre::eyre!(err))
     }
 
     /// Persist prompt text in the local cross-session message history.

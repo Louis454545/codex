@@ -30,6 +30,7 @@ pub struct RequestUserInputQuestion {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct RequestUserInputArgs {
+    #[serde(default)]
     pub questions: Vec<RequestUserInputQuestion>,
 }
 

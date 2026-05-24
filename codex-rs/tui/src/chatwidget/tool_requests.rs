@@ -414,6 +414,18 @@ impl ChatWidget {
 
     pub(crate) fn handle_request_user_input_now(&mut self, ev: ToolRequestUserInputParams) {
         self.flush_answer_stream_with_separator();
+        if ev.questions.is_empty() {
+            self.notify(Notification::PlanModePrompt {
+                title: "Waiting for user input".to_string(),
+            });
+            self.set_ambient_pet_notification(
+                crate::pets::PetNotificationKind::Waiting,
+                /*body*/ None,
+            );
+            self.request_redraw();
+            return;
+        }
+
         let question_count = ev.questions.len();
         let summary = Notification::user_input_request_summary(&ev.questions);
         let title = match (question_count, summary.as_deref()) {

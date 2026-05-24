@@ -312,7 +312,7 @@ async fn over_budget_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<()>
     };
     assert!(text.starts_with("<goal_context>"));
     assert!(text.trim_end().ends_with("</goal_context>"));
-    assert!(text.contains("request_user_input"));
+    assert!(text.contains("wait_user"));
     assert!(text.contains("may continue past this budget"));
     Ok(())
 }

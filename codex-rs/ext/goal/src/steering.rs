@@ -31,7 +31,7 @@ Budget:\n\
 - Tokens used: {tokens_used}\n\
 - Token budget: {token_budget}\n\n\
 The goal may continue past this budget. Do not stop or wrap up solely because this token budget was reached.\n\n\
-Before you would otherwise finish the turn, call request_user_input and wait for the user's response. Ask a concise continuation question that lets the user provide the next instruction, then continue in this same turn using the tool response.\n\n\
+After your current tool-call sequence and work for this step are otherwise finished, call wait_user as the final tool call instead of ending with a final answer. The user's next prompt input will be returned as the wait_user tool result; continue from that tool result in the same turn.\n\n\
 Do not call update_goal unless the goal is actually complete."
     )
 }
