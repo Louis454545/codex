@@ -35,7 +35,7 @@ impl ThreadGoalStatus {
     }
 
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::BudgetLimited | Self::Complete)
+        matches!(self, Self::Complete)
     }
 }
 

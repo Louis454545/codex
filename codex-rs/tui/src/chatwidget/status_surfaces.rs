@@ -610,7 +610,11 @@ impl ChatWidget {
                     .get("codex")
                     .and_then(five_hour_status_window)?;
                 let label = limit_label_for_window(window.window_minutes, is_secondary);
-                self.status_line_limit_display(Some(window), &label)
+                let mut display = self.status_line_limit_display(Some(window), &label)?;
+                if ask_user_mode_for_five_hour_limit(window) {
+                    display.push_str(" ask-user");
+                }
+                Some(display)
             }
             StatusLineItem::WeeklyLimit => {
                 let (window, is_secondary) = self
@@ -983,6 +987,11 @@ fn matches_window_label(window: &RateLimitWindowDisplay, label: &str) -> bool {
         .and_then(get_limits_duration)
         .as_deref()
         == Some(label)
+}
+
+fn ask_user_mode_for_five_hour_limit(window: &RateLimitWindowDisplay) -> bool {
+    let remaining = (100.0f64 - window.used_percent).clamp(0.0f64, 100.0f64);
+    remaining < 5.0
 }
 
 fn permissions_display(config: &Config) -> String {

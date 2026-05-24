@@ -230,7 +230,7 @@ async fn tool_finish_accounts_active_goal_progress_and_emits_event() -> anyhow::
 }
 
 #[tokio::test]
-async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<()> {
+async fn over_budget_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -282,20 +282,20 @@ async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<
         .await?
         .ok_or_else(|| anyhow::anyhow!("goal should exist"))?;
     assert_eq!(35, goal.tokens_used);
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
 
     assert_eq!(
         vec![
             CapturedGoalEvent {
                 event_id: "call-shell".to_string(),
                 turn_id: Some("turn-1".to_string()),
-                status: ThreadGoalStatus::BudgetLimited,
+                status: ThreadGoalStatus::Active,
                 tokens_used: 25,
             },
             CapturedGoalEvent {
                 event_id: "turn-1:turn-stop".to_string(),
                 turn_id: Some("turn-1".to_string()),
-                status: ThreadGoalStatus::BudgetLimited,
+                status: ThreadGoalStatus::Active,
                 tokens_used: 35,
             },
         ],
@@ -312,13 +312,13 @@ async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<
     };
     assert!(text.starts_with("<goal_context>"));
     assert!(text.trim_end().ends_with("</goal_context>"));
-    assert!(text.contains("budget_limited"));
-    assert!(text.to_lowercase().contains("wrap up this turn soon"));
+    assert!(text.contains("request_user_input"));
+    assert!(text.contains("may continue past this budget"));
     Ok(())
 }
 
 #[tokio::test]
-async fn budget_limited_goal_steering_injects_once_after_later_tool_finish() -> anyhow::Result<()> {
+async fn over_budget_goal_steering_injects_once_after_later_tool_finish() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -371,7 +371,7 @@ async fn budget_limited_goal_steering_injects_once_after_later_tool_finish() -> 
         .await?
         .ok_or_else(|| anyhow::anyhow!("goal should exist"))?;
     assert_eq!(35, goal.tokens_used);
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
     assert_eq!(1, harness.response_item_injector.items().len());
     Ok(())
 }

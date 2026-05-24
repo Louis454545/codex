@@ -11,6 +11,8 @@ Budget:
 - Tokens used: {{ tokens_used }}
 - Token budget: {{ token_budget }}
 
-The system has marked the goal as budget_limited, so do not start new substantive work for this goal. Wrap up this turn soon: summarize useful progress, identify remaining work or blockers, and leave the user with a clear next step.
+The goal may continue past this budget. Do not stop or wrap up solely because this token budget was reached.
+
+Before you would otherwise finish the turn, call request_user_input and wait for the user's response. Ask a concise continuation question that lets the user provide the next instruction, then continue in this same turn using the tool response.
 
 Do not call update_goal unless the goal is actually complete.

@@ -538,8 +538,8 @@ impl Session {
             )
             .await;
         }
-        let goal_status = goal.status;
         let goal_id = goal.goal_id.clone();
+        let goal_status = goal.status;
         let previous_status_for_goal = if replacing_goal {
             None
         } else {
@@ -1072,13 +1072,13 @@ impl Session {
             }
             codex_state::GoalAccountingOutcome::Unchanged(_) => return Ok(()),
         };
+        let reached_token_budget = state_goal_reached_token_budget(&goal);
         let should_steer_budget_limit =
             matches!(budget_limit_steering, BudgetLimitSteering::Allowed)
-                && goal.status == codex_state::ThreadGoalStatus::BudgetLimited
+                && reached_token_budget
                 && !budget_limit_was_already_reported;
-        let goal_status = goal.status;
         let goal_id = goal.goal_id.clone();
-        if goal_status != codex_state::ThreadGoalStatus::BudgetLimited {
+        if !reached_token_budget {
             *self.goal_runtime.budget_limit_reported_goal_id.lock().await = None;
         }
         let goal = protocol_goal_from_state(goal);
@@ -1629,6 +1629,11 @@ fn budget_limit_steering_item(goal: &ThreadGoal) -> ResponseInputItem {
     goal_context_input_item(budget_limit_prompt(goal))
 }
 
+fn state_goal_reached_token_budget(goal: &codex_state::ThreadGoal) -> bool {
+    goal.token_budget
+        .is_some_and(|budget| goal.tokens_used >= budget)
+}
+
 fn goal_context_input_item(prompt: String) -> ResponseInputItem {
     GoalContext::new(prompt).into_response_input_item()
 }
@@ -1772,7 +1777,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_limit_prompt_steers_model_to_wrap_up_without_pausing() {
+    fn budget_limit_prompt_steers_model_to_request_user_input() {
         let prompt = budget_limit_prompt(&ThreadGoal {
             thread_id: ThreadId::new(),
             objective: "finish the stack".to_string(),
@@ -1789,7 +1794,8 @@ mod tests {
         assert!(prompt.contains("<objective>\nfinish the stack\n</objective>"));
         assert!(prompt.contains("Token budget: 10000"));
         assert!(prompt.contains("Tokens used: 10100"));
-        assert!(prompt.to_lowercase().contains("wrap up this turn soon"));
+        assert!(prompt.contains("request_user_input"));
+        assert!(prompt.contains("may continue past this budget"));
         assert!(!prompt.contains("status \"paused\""));
     }
 

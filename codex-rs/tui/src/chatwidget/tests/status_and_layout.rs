@@ -623,6 +623,30 @@ async fn status_line_legacy_limit_items_prefer_matching_windows() {
 }
 
 #[tokio::test]
+async fn status_line_five_hour_item_indicates_ask_user_mode_below_five_percent() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.on_rate_limit_snapshot(Some(RateLimitSnapshot {
+        limit_id: None,
+        limit_name: None,
+        primary: Some(RateLimitWindow {
+            used_percent: 96,
+            window_duration_mins: Some(5 * 60),
+            resets_at: None,
+        }),
+        secondary: None,
+        credits: None,
+        plan_type: None,
+        rate_limit_reached_type: None,
+    }));
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::FiveHourLimit),
+        Some("5h 4% ask-user".to_string())
+    );
+}
+
+#[tokio::test]
 async fn status_line_shows_secondary_non_weekly_when_primary_is_weekly() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 

@@ -186,9 +186,6 @@ impl GoalAccountingState {
         if clear_active_goal {
             inner.wall_clock.clear_active_goal();
         }
-        if status != ThreadGoalStatus::BudgetLimited {
-            inner.budget_limit_reported_goal_id = None;
-        }
     }
 
     pub(crate) fn finish_turn(&self, turn_id: &str) {
@@ -206,6 +203,10 @@ impl GoalAccountingState {
         }
         inner.budget_limit_reported_goal_id = Some(goal_id.to_string());
         true
+    }
+
+    pub(crate) fn clear_budget_limit_reported(&self) {
+        self.inner().budget_limit_reported_goal_id = None;
     }
 
     fn inner(&self) -> std::sync::MutexGuard<'_, GoalAccountingInner> {

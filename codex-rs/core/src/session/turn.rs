@@ -35,6 +35,7 @@ use crate::mentions::collect_explicit_app_ids;
 use crate::mentions::collect_explicit_plugin_mentions;
 use crate::mentions::collect_tool_mentions_from_messages;
 use crate::plugins::build_plugin_injections;
+use crate::rate_limit_steering::five_hour_ask_user_steering_item;
 use crate::session::PreviousTurnSettings;
 use crate::session::TurnInput;
 use crate::session::session::Session;
@@ -1977,6 +1978,11 @@ async fn try_run_sampling_request(
                 sess.set_server_reasoning_included(included).await;
             }
             ResponseEvent::RateLimits(snapshot) => {
+                if let Some(item) = five_hour_ask_user_steering_item(&snapshot)
+                    && sess.inject_response_items(vec![item]).await.is_err()
+                {
+                    tracing::debug!("skipping low 5-hour usage steering because no turn is active");
+                }
                 // Update internal state with latest rate limits, but defer sending until
                 // token usage is available to avoid duplicate TokenCount events.
                 sess.record_rate_limits_info(snapshot).await;

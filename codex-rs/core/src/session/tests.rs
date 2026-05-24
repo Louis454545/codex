@@ -8725,7 +8725,7 @@ async fn create_thread_goal_fills_empty_thread_preview() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn budget_limited_accounting_steers_active_turn_without_aborting() -> anyhow::Result<()> {
+async fn over_budget_accounting_steers_active_turn_without_aborting() -> anyhow::Result<()> {
     let (sess, tc, rx, _codex_home) = make_goal_session_and_context_with_rx().await;
     sess.set_thread_goal(
         tc.as_ref(),
@@ -8782,13 +8782,13 @@ async fn budget_limited_accounting_steers_active_turn_without_aborting() -> anyh
     };
     assert!(text.starts_with("<goal_context>"));
     assert!(text.trim_end().ends_with("</goal_context>"));
-    assert!(text.contains("budget_limited"));
-    assert!(text.to_lowercase().contains("wrap up this turn soon"));
+    assert!(text.contains("request_user_input"));
+    assert!(text.contains("may continue past this budget"));
     assert!(sess.active_turn.lock().await.is_some());
     while let Ok(event) = rx.try_recv() {
         assert!(
             !matches!(event.msg, EventMsg::TurnAborted(_)),
-            "budget limit should steer the active turn instead of aborting it"
+            "spent budget should steer the active turn instead of aborting it"
         );
     }
 
@@ -8798,7 +8798,7 @@ async fn budget_limited_accounting_steers_active_turn_without_aborting() -> anyh
         .get_thread_goal(sess.conversation_id)
         .await?
         .expect("goal should remain persisted after accounting");
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
     assert_eq!(25, goal.tokens_used);
 
     set_total_token_usage(
@@ -8822,7 +8822,7 @@ async fn budget_limited_accounting_steers_active_turn_without_aborting() -> anyh
         .get_thread_goal(sess.conversation_id)
         .await?
         .expect("goal should remain persisted after follow-up accounting");
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
     assert_eq!(40, goal.tokens_used);
 
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;

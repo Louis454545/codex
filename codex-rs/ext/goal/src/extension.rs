@@ -20,7 +20,6 @@ use codex_extension_api::TurnStartInput;
 use codex_extension_api::TurnStopInput;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::ThreadGoal;
-use codex_protocol::protocol::ThreadGoalStatus;
 use codex_protocol::protocol::TokenUsageInfo;
 
 use crate::accounting::BudgetLimitedGoalDisposition;
@@ -28,6 +27,7 @@ use crate::accounting::GoalAccountingState;
 use crate::events::GoalEventEmitter;
 use crate::spec::UPDATE_GOAL_TOOL_NAME;
 use crate::steering::budget_limit_steering_item;
+use crate::steering::goal_reached_token_budget;
 use crate::tool::GoalToolExecutor;
 use crate::tool::protocol_goal_from_state;
 
@@ -263,7 +263,8 @@ where
                 }
             };
             let goal = progress.goal;
-            if goal.status != ThreadGoalStatus::BudgetLimited {
+            if !goal_reached_token_budget(&goal) {
+                accounting_state(input.thread_store).clear_budget_limit_reported();
                 return;
             }
             if !accounting_state(input.thread_store)

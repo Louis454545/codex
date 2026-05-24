@@ -6,6 +6,11 @@ pub(crate) fn budget_limit_steering_item(goal: &ThreadGoal) -> ResponseInputItem
     GoalContext::new(budget_limit_prompt(goal)).into_response_input_item()
 }
 
+pub(crate) fn goal_reached_token_budget(goal: &ThreadGoal) -> bool {
+    goal.token_budget
+        .is_some_and(|budget| goal.tokens_used >= budget)
+}
+
 fn budget_limit_prompt(goal: &ThreadGoal) -> String {
     let objective = escape_xml_text(&goal.objective);
     let time_used_seconds = goal.time_used_seconds;
@@ -25,7 +30,8 @@ Budget:\n\
 - Time spent pursuing goal: {time_used_seconds} seconds\n\
 - Tokens used: {tokens_used}\n\
 - Token budget: {token_budget}\n\n\
-The system has marked the goal as budget_limited, so do not start new substantive work for this goal. Wrap up this turn soon: summarize useful progress, identify remaining work or blockers, and leave the user with a clear next step.\n\n\
+The goal may continue past this budget. Do not stop or wrap up solely because this token budget was reached.\n\n\
+Before you would otherwise finish the turn, call request_user_input and wait for the user's response. Ask a concise continuation question that lets the user provide the next instruction, then continue in this same turn using the tool response.\n\n\
 Do not call update_goal unless the goal is actually complete."
     )
 }
