@@ -357,7 +357,7 @@ async fn parallel_tool_finish_accounts_active_goal_progress_once() -> anyhow::Re
 }
 
 #[tokio::test]
-async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<()> {
+async fn over_budget_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -409,20 +409,20 @@ async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<
         .await?
         .ok_or_else(|| anyhow::anyhow!("goal should exist"))?;
     assert_eq!(35, goal.tokens_used);
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
 
     assert_eq!(
         vec![
             CapturedGoalEvent {
                 event_id: "call-shell".to_string(),
                 turn_id: Some("turn-1".to_string()),
-                status: ThreadGoalStatus::BudgetLimited,
+                status: ThreadGoalStatus::Active,
                 tokens_used: 25,
             },
             CapturedGoalEvent {
                 event_id: "turn-1:turn-stop".to_string(),
                 turn_id: Some("turn-1".to_string()),
-                status: ThreadGoalStatus::BudgetLimited,
+                status: ThreadGoalStatus::Active,
                 tokens_used: 35,
             },
         ],
@@ -433,7 +433,7 @@ async fn budget_limited_goal_keeps_accruing_until_turn_stop() -> anyhow::Result<
 }
 
 #[tokio::test]
-async fn budget_limited_goal_keeps_accounting_after_later_tool_finish() -> anyhow::Result<()> {
+async fn over_budget_goal_keeps_accounting_after_later_tool_finish() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -486,7 +486,7 @@ async fn budget_limited_goal_keeps_accounting_after_later_tool_finish() -> anyho
         .await?
         .ok_or_else(|| anyhow::anyhow!("goal should exist"))?;
     assert_eq!(35, goal.tokens_used);
-    assert_eq!(codex_state::ThreadGoalStatus::BudgetLimited, goal.status);
+    assert_eq!(codex_state::ThreadGoalStatus::Active, goal.status);
     Ok(())
 }
 
@@ -603,7 +603,7 @@ async fn turn_error_blocks_goal() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn usage_limit_budget_limited_goal_accounts_remaining_progress() -> anyhow::Result<()> {
+async fn usage_limit_over_budget_goal_accounts_remaining_progress() -> anyhow::Result<()> {
     let runtime = test_runtime().await?;
     let thread_id = test_thread_id()?;
     seed_thread_metadata(runtime.as_ref(), thread_id).await?;
@@ -666,7 +666,7 @@ async fn usage_limit_budget_limited_goal_accounts_remaining_progress() -> anyhow
             CapturedGoalEvent {
                 event_id: "turn-1:usage-limit-progress".to_string(),
                 turn_id: Some("turn-1".to_string()),
-                status: ThreadGoalStatus::BudgetLimited,
+                status: ThreadGoalStatus::Active,
                 tokens_used: 35,
             },
             CapturedGoalEvent {
