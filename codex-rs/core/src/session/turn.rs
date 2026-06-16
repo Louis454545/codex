@@ -55,6 +55,7 @@ use crate::stream_events_utils::record_completed_response_item_with_finalized_fa
 use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
+use crate::tools::handlers::request_user_message_spec::REQUEST_USER_MESSAGE_TOOL_NAME;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::registry::ToolArgumentDiffConsumer;
 use crate::tools::router::ToolRouterParams;
@@ -70,6 +71,7 @@ use codex_analytics::CompactionReason;
 use codex_analytics::InvocationType;
 use codex_analytics::TurnResolvedConfigFact;
 use codex_analytics::build_track_events_context;
+use codex_api::ToolChoice;
 use codex_async_utils::OrCancelExt;
 use codex_core_skills::injection::InjectedHostSkillPrompts;
 use codex_extension_api::TurnInputContext;
@@ -200,6 +202,7 @@ pub(crate) async fn run_turn(
     // However, we defer that drain until after sampling in two cases:
     // 1. At the start of a turn, so the fresh turn input in `input` gets sampled first.
     // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
+    let mut force_request_user_message_next_sampling = false;
 
     loop {
         // Note that pending_input would be something like a message the user
@@ -231,6 +234,8 @@ pub(crate) async fn run_turn(
             CodexResponsesRequestKind::Turn,
         );
         let tokens_before_sampling = sess.get_total_token_usage().await;
+        let force_request_user_message = force_request_user_message_next_sampling;
+        force_request_user_message_next_sampling = false;
         match run_sampling_request(
             Arc::clone(&sess),
             Arc::clone(&turn_context),
@@ -239,6 +244,7 @@ pub(crate) async fn run_turn(
             &mut client_session,
             &responses_metadata,
             sampling_request_input,
+            force_request_user_message,
             cancellation_token.child_token(),
         )
         .await
@@ -247,6 +253,7 @@ pub(crate) async fn run_turn(
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
                     last_agent_message: sampling_request_last_agent_message,
+                    called_request_user_message,
                 } = sampling_request_output;
                 can_drain_pending_input = true;
                 let (has_pending_input, token_status, estimated_token_count) = async {
@@ -260,7 +267,15 @@ pub(crate) async fn run_turn(
                 }
                 .instrument(trace_span!("run_turn.collect_post_sampling_state"))
                 .await;
-                let needs_follow_up = model_needs_follow_up || has_pending_input;
+                let request_user_message_recovery_needed =
+                    request_user_message_enabled(sess.as_ref(), turn_context.as_ref()).await
+                        && sampling_request_last_agent_message.is_some()
+                        && !called_request_user_message
+                        && !model_needs_follow_up
+                        && !force_request_user_message;
+                let needs_follow_up = model_needs_follow_up
+                    || has_pending_input
+                    || request_user_message_recovery_needed;
                 let token_limit_reached = token_status.token_limit_reached;
 
                 trace!(
@@ -275,6 +290,7 @@ pub(crate) async fn run_turn(
                     full_context_window_limit_reached = token_status.full_context_window_limit_reached,
                     token_limit_reached,
                     model_needs_follow_up,
+                    request_user_message_recovery_needed,
                     has_pending_input,
                     needs_follow_up,
                     "post sampling token usage"
@@ -296,6 +312,21 @@ pub(crate) async fn run_turn(
                 if started_new_context_window && needs_follow_up {
                     can_drain_pending_input = !model_needs_follow_up;
                     continue;
+                }
+
+                if request_user_message_recovery_needed {
+                    force_request_user_message_next_sampling = true;
+                    continue;
+                }
+
+                if force_request_user_message && !called_request_user_message {
+                    sess.send_event(
+                        &turn_context,
+                        EventMsg::Warning(WarningEvent {
+                            message: "The model did not call request_user_message after a forced recovery attempt.".to_string(),
+                        }),
+                    )
+                    .await;
                 }
 
                 // as long as compaction works well in getting us way below the token limit, we shouldn't worry about being in an infinite loop.
@@ -1020,6 +1051,7 @@ pub(crate) fn build_prompt(
         output_schema_strict: !crate::guardian::is_guardian_reviewer_source(
             &turn_context.session_source,
         ),
+        tool_choice: None,
     }
 }
 
@@ -1041,11 +1073,16 @@ async fn run_sampling_request(
     client_session: &mut ModelClientSession,
     responses_metadata: &CodexResponsesMetadata,
     input: Vec<ResponseItem>,
+    force_request_user_message: bool,
     cancellation_token: CancellationToken,
 ) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
     let router = built_tools(sess.as_ref(), turn_context.as_ref(), &cancellation_token).await?;
 
     let base_instructions = sess.get_base_instructions().await;
+    let request_user_message_instruction_enabled =
+        request_user_message_enabled(sess.as_ref(), turn_context.as_ref()).await;
+    let force_request_user_message =
+        force_request_user_message && request_user_message_instruction_enabled;
 
     let tool_runtime = ToolCallRuntime::new(
         Arc::clone(&router),
@@ -1071,12 +1108,21 @@ async fn run_sampling_request(
                 .await
                 .for_prompt(&turn_context.model_info.input_modalities)
         };
-        let prompt = build_prompt(
+        let prompt_base_instructions = request_user_message_base_instructions(
+            base_instructions.clone(),
+            request_user_message_instruction_enabled,
+            force_request_user_message,
+        );
+        let mut prompt = build_prompt(
             prompt_input,
             router.as_ref(),
             turn_context.as_ref(),
-            base_instructions.clone(),
+            prompt_base_instructions,
         );
+        if force_request_user_message {
+            prompt.tool_choice = Some(ToolChoice::function(REQUEST_USER_MESSAGE_TOOL_NAME));
+            prompt.parallel_tool_calls = false;
+        }
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
@@ -1233,15 +1279,44 @@ pub(crate) async fn built_tools(
             discoverable_tools,
             extension_tool_executors: extension_tool_executors(sess),
             dynamic_tools: turn_context.dynamic_tools.as_slice(),
+            request_user_message_enabled: request_user_message_enabled(sess, turn_context).await,
         },
         &sess.services.tool_search_handler_cache,
     )))
+}
+
+async fn request_user_message_enabled(sess: &Session, turn_context: &TurnContext) -> bool {
+    turn_context.final_output_json_schema.is_none()
+        && turn_context.app_server_client_name.as_deref() == Some("codex-tui")
+        && !turn_context.session_source.is_non_root_agent()
+        && sess.low_5h_quota_active().await
+}
+
+fn request_user_message_base_instructions(
+    mut base_instructions: BaseInstructions,
+    enabled: bool,
+    force_request_user_message: bool,
+) -> BaseInstructions {
+    if !enabled {
+        return base_instructions;
+    }
+
+    base_instructions.text.push_str(
+        "\n\nLow 5-hour usage mode is active. After you have completed your assistant response, call `request_user_message` with `{}`. Do not call it before the response content. Do not end the response without calling it.",
+    );
+    if force_request_user_message {
+        base_instructions.text.push_str(
+            "\n\nYou already produced the assistant response for this turn. Now call `request_user_message` with `{}` and do not add more assistant text.",
+        );
+    }
+    base_instructions
 }
 
 #[derive(Debug)]
 struct SamplingRequestResult {
     needs_follow_up: bool,
     last_agent_message: Option<String>,
+    called_request_user_message: bool,
 }
 
 /// Ephemeral per-response state for streaming a single proposed plan.
@@ -1463,6 +1538,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {
         | EventMsg::ExecApprovalRequest(_)
         | EventMsg::RequestPermissions(_)
         | EventMsg::RequestUserInput(_)
+        | EventMsg::RequestUserMessage(_)
         | EventMsg::DynamicToolCallRequest(_)
         | EventMsg::DynamicToolCallResponse(_)
         | EventMsg::GuardianAssessment(_)
@@ -1854,6 +1930,7 @@ async fn try_run_sampling_request(
     let mut in_flight: FuturesOrdered<BoxFuture<'static, CodexResult<ResponseInputItem>>> =
         FuturesOrdered::new();
     let mut needs_follow_up = false;
+    let mut called_request_user_message = false;
     let mut last_agent_message: Option<String> = None;
     let mut active_item: Option<TurnItem> = None;
     let mut active_tool_argument_diff_consumer: Option<(
@@ -1914,6 +1991,13 @@ async fn try_run_sampling_request(
         match event {
             ResponseEvent::Created => {}
             ResponseEvent::OutputItemDone(item) => {
+                if matches!(
+                    &item,
+                    ResponseItem::FunctionCall { name, .. }
+                        if name == REQUEST_USER_MESSAGE_TOOL_NAME
+                ) {
+                    called_request_user_message = true;
+                }
                 if let Some((_, mut consumer)) = active_tool_argument_diff_consumer.take()
                     && let Ok(Some(event)) = consumer.finish()
                 {
@@ -2003,6 +2087,7 @@ async fn try_run_sampling_request(
                     break Ok(SamplingRequestResult {
                         needs_follow_up: true,
                         last_agent_message,
+                        called_request_user_message,
                     });
                 }
             }
@@ -2139,6 +2224,7 @@ async fn try_run_sampling_request(
                 break Ok(SamplingRequestResult {
                     needs_follow_up,
                     last_agent_message,
+                    called_request_user_message,
                 });
             }
             ResponseEvent::OutputTextDelta(delta) => {

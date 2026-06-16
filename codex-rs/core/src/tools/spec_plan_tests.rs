@@ -184,6 +184,7 @@ async fn probe_with(
             discoverable_tools: inputs.discoverable_tools,
             extension_tool_executors: inputs.extension_tool_executors,
             dynamic_tools: inputs.dynamic_tools.as_slice(),
+            request_user_message_enabled: false,
         },
         &Default::default(),
     );
@@ -796,6 +797,7 @@ async fn tool_search_cache_rebuilds_when_deferred_sources_change() {
             discoverable_tools: None,
             extension_tool_executors: Vec::new(),
             dynamic_tools: &[],
+            request_user_message_enabled: false,
         },
         &cache,
     );
@@ -811,6 +813,7 @@ async fn tool_search_cache_rebuilds_when_deferred_sources_change() {
             discoverable_tools: None,
             extension_tool_executors: Vec::new(),
             dynamic_tools: &[],
+            request_user_message_enabled: false,
         },
         &cache,
     );

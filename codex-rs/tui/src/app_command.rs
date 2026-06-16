@@ -7,6 +7,7 @@ use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
+use codex_app_server_protocol::ToolRequestUserMessageResponse;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::ApprovalsReviewer;
 use codex_protocol::approvals::GuardianAssessmentEvent;
@@ -78,6 +79,10 @@ pub(crate) enum AppCommand {
     UserInputAnswer {
         id: String,
         response: ToolRequestUserInputResponse,
+    },
+    UserMessageToolResponse {
+        id: String,
+        response: ToolRequestUserMessageResponse,
     },
     RequestPermissionsResponse {
         id: String,
@@ -226,6 +231,13 @@ impl AppCommand {
 
     pub(crate) fn user_input_answer(id: String, response: ToolRequestUserInputResponse) -> Self {
         Self::UserInputAnswer { id, response }
+    }
+
+    pub(crate) fn user_message_tool_response(
+        id: String,
+        response: ToolRequestUserMessageResponse,
+    ) -> Self {
+        Self::UserMessageToolResponse { id, response }
     }
 
     pub(crate) fn request_permissions_response(

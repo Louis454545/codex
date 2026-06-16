@@ -822,7 +822,7 @@ mod tests {
                 "name": "lookup",
                 "parameters": {"type": "object"}
             })],
-            tool_choice: "auto".to_string(),
+            tool_choice: crate::common::ToolChoice::auto(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,

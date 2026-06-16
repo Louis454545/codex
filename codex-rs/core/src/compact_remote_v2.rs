@@ -240,6 +240,7 @@ async fn run_remote_compact_task_inner_impl(
         personality: turn_context.personality,
         output_schema: None,
         output_schema_strict: true,
+        tool_choice: None,
     };
 
     let window_id = sess.current_window_id().await;

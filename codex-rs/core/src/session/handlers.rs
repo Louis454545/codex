@@ -48,6 +48,7 @@ use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::request_user_message::RequestUserMessageResponse;
 
 use crate::context_manager::is_user_turn_boundary;
 use codex_protocol::dynamic_tools::DynamicToolResponse;
@@ -419,6 +420,14 @@ pub async fn request_user_input_response(
     sess.notify_user_input_response(&id, response).await;
 }
 
+pub async fn user_message_tool_response(
+    sess: &Arc<Session>,
+    id: String,
+    response: RequestUserMessageResponse,
+) {
+    sess.notify_user_message_response(&id, response).await;
+}
+
 pub async fn request_permissions_response(
     sess: &Arc<Session>,
     id: String,
@@ -777,6 +786,10 @@ pub(super) async fn submission_loop(
                 }
                 Op::UserInputAnswer { id, response } => {
                     request_user_input_response(&sess, id, response).await;
+                    false
+                }
+                Op::UserMessageToolResponse { id, response } => {
+                    user_message_tool_response(&sess, id, response).await;
                     false
                 }
                 Op::RequestPermissionsResponse { id, response } => {

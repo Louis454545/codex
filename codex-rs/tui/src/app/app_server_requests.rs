@@ -61,6 +61,9 @@ pub(crate) enum ResolvedAppServerRequest {
     UserInput {
         call_id: String,
     },
+    UserMessage {
+        call_id: String,
+    },
     McpElicitation {
         server_name: String,
         request_id: AppServerRequestId,
@@ -73,6 +76,7 @@ pub(super) struct PendingAppServerRequests {
     file_change_approvals: HashMap<String, AppServerRequestId>,
     permissions_approvals: HashMap<String, AppServerRequestId>,
     user_inputs: HashMap<String, VecDeque<PendingUserInputRequest>>,
+    user_messages: HashMap<String, VecDeque<PendingUserInputRequest>>,
     mcp_requests: HashMap<McpRequestKey, AppServerRequestId>,
 }
 
@@ -82,6 +86,7 @@ impl PendingAppServerRequests {
         self.file_change_approvals.clear();
         self.permissions_approvals.clear();
         self.user_inputs.clear();
+        self.user_messages.clear();
         self.mcp_requests.clear();
     }
 
@@ -122,6 +127,16 @@ impl PendingAppServerRequests {
             }
             ServerRequest::ToolRequestUserInput { request_id, params } => {
                 self.user_inputs
+                    .entry(params.turn_id.clone())
+                    .or_default()
+                    .push_back(PendingUserInputRequest {
+                        item_id: params.item_id.clone(),
+                        request_id: request_id.clone(),
+                    });
+                None
+            }
+            ServerRequest::ToolRequestUserMessage { request_id, params } => {
+                self.user_messages
                     .entry(params.turn_id.clone())
                     .or_default()
                     .push_back(PendingUserInputRequest {
@@ -241,6 +256,17 @@ impl PendingAppServerRequests {
                     })
                 })
                 .transpose()?,
+            AppCommand::UserMessageToolResponse { id, response } => self
+                .pop_user_message_request_for_turn(id)
+                .map(|pending| {
+                    Ok::<AppServerRequestResolution, String>(AppServerRequestResolution {
+                        request_id: pending.request_id,
+                        result: serde_json::to_value(response).map_err(|err| {
+                            format!("failed to serialize request_user_message response: {err}")
+                        })?,
+                    })
+                })
+                .transpose()?,
             AppCommand::ResolveElicitation {
                 server_name,
                 request_id,
@@ -309,6 +335,12 @@ impl PendingAppServerRequests {
             });
         }
 
+        if let Some(pending) = self.remove_user_message_request(request_id) {
+            return Some(ResolvedAppServerRequest::UserMessage {
+                call_id: pending.item_id,
+            });
+        }
+
         if let Some(key) = self
             .mcp_requests
             .iter()
@@ -340,6 +372,13 @@ impl PendingAppServerRequests {
                 .any(|pending_request_id| pending_request_id == request_id),
             ServerRequest::ToolRequestUserInput { request_id, .. } => {
                 self.user_inputs.values().any(|queue| {
+                    queue
+                        .iter()
+                        .any(|pending| &pending.request_id == request_id)
+                })
+            }
+            ServerRequest::ToolRequestUserMessage { request_id, .. } => {
+                self.user_messages.values().any(|queue| {
                     queue
                         .iter()
                         .any(|pending| &pending.request_id == request_id)
@@ -389,6 +428,42 @@ impl PendingAppServerRequests {
         let removed = queue.remove(index);
         if queue.is_empty() {
             self.user_inputs.remove(&turn_id);
+        }
+        removed
+    }
+
+    fn pop_user_message_request_for_turn(
+        &mut self,
+        turn_id: &str,
+    ) -> Option<PendingUserInputRequest> {
+        let pending = self
+            .user_messages
+            .get_mut(turn_id)
+            .and_then(VecDeque::pop_front);
+        if self
+            .user_messages
+            .get(turn_id)
+            .is_some_and(VecDeque::is_empty)
+        {
+            self.user_messages.remove(turn_id);
+        }
+        pending
+    }
+
+    fn remove_user_message_request(
+        &mut self,
+        request_id: &AppServerRequestId,
+    ) -> Option<PendingUserInputRequest> {
+        let (turn_id, index) = self.user_messages.iter().find_map(|(turn_id, queue)| {
+            queue
+                .iter()
+                .position(|pending| &pending.request_id == request_id)
+                .map(|index| (turn_id.clone(), index))
+        })?;
+        let queue = self.user_messages.get_mut(&turn_id)?;
+        let removed = queue.remove(index);
+        if queue.is_empty() {
+            self.user_messages.remove(&turn_id);
         }
         removed
     }

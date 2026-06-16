@@ -132,6 +132,7 @@ use codex_protocol::request_permissions::RequestPermissionsEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputArgs;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::request_user_message::RequestUserMessageResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_rollout::state_db;
 use codex_rollout_trace::AgentResultTracePayload;
@@ -361,6 +362,7 @@ use codex_protocol::protocol::NonSteerableTurnKind;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RateLimitSnapshot;
 use codex_protocol::protocol::RequestUserInputEvent;
+use codex_protocol::protocol::RequestUserMessageEvent;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionConfiguredEvent;
@@ -2423,6 +2425,72 @@ impl Session {
         clippy::await_holding_invalid_type,
         reason = "active turn checks and turn state updates must remain atomic"
     )]
+    pub async fn request_user_message(
+        &self,
+        turn_context: &TurnContext,
+        call_id: String,
+    ) -> Option<RequestUserMessageResponse> {
+        let sub_id = turn_context.sub_id.clone();
+        let (tx_response, rx_response) = oneshot::channel();
+        let event_id = sub_id.clone();
+        let prev_entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(at) => {
+                    let mut ts = at.turn_state.lock().await;
+                    ts.insert_pending_user_message(sub_id, tx_response)
+                }
+                None => None,
+            }
+        };
+        if prev_entry.is_some() {
+            warn!("Overwriting existing pending user message for sub_id: {event_id}");
+        }
+
+        let event = EventMsg::RequestUserMessage(RequestUserMessageEvent {
+            call_id,
+            turn_id: turn_context.sub_id.clone(),
+        });
+        turn_context
+            .turn_metadata_state
+            .mark_user_input_requested_during_turn();
+        self.send_event(turn_context, event).await;
+        rx_response.await.ok()
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub async fn notify_user_message_response(
+        &self,
+        sub_id: &str,
+        response: RequestUserMessageResponse,
+    ) {
+        let entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(at) => {
+                    let mut ts = at.turn_state.lock().await;
+                    ts.remove_pending_user_message(sub_id)
+                }
+                None => None,
+            }
+        };
+        match entry {
+            Some(tx_response) => {
+                tx_response.send(response).ok();
+            }
+            None => {
+                warn!("No pending user message found for sub_id: {sub_id}");
+            }
+        }
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
     pub async fn notify_request_permissions_response(
         &self,
         call_id: &str,
@@ -3285,6 +3353,11 @@ impl Session {
             let mut state = self.state.lock().await;
             state.set_rate_limits(new_rate_limits);
         }
+    }
+
+    pub(crate) async fn low_5h_quota_active(&self) -> bool {
+        let state = self.state.lock().await;
+        state.low_5h_quota_active()
     }
 
     pub(crate) async fn mcp_dependency_prompted(&self) -> HashSet<String> {

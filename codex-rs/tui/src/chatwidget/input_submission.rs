@@ -149,7 +149,8 @@ impl ChatWidget {
         let mut items: Vec<UserInput> = Vec::new();
 
         // Special-case: "!cmd" executes a local shell command instead of sending to the model.
-        if shell_escape_policy == ShellEscapePolicy::Allow
+        if self.pending_request_user_message.is_none()
+            && shell_escape_policy == ShellEscapePolicy::Allow
             && let Some(stripped) = text.strip_prefix('!')
         {
             let app_command = match self.submit_shell_command_with_history(stripped, &text) {
@@ -311,6 +312,62 @@ impl ChatWidget {
         }
 
         self.maybe_apply_ide_context(&mut items);
+
+        if let Some(request) = self.pending_request_user_message.take() {
+            let op = AppCommand::user_message_tool_response(
+                request.turn_id.clone(),
+                ToolRequestUserMessageResponse {
+                    items: items.clone(),
+                },
+            );
+            if !self.submit_op(op.clone()) {
+                self.pending_request_user_message = Some(request);
+                return (false, None);
+            }
+
+            let encoded_mentions = mention_bindings
+                .iter()
+                .map(|binding| LinkedMention {
+                    sigil: binding.sigil,
+                    mention: binding.mention.clone(),
+                    path: binding.path.clone(),
+                })
+                .collect::<Vec<_>>();
+            let history_text = match &history_record {
+                UserMessageHistoryRecord::UserMessageText if !text.is_empty() => {
+                    Some(encode_history_mentions(&text, &encoded_mentions))
+                }
+                UserMessageHistoryRecord::Override(history) if !history.text.is_empty() => {
+                    Some(encode_history_mentions(&history.text, &encoded_mentions))
+                }
+                UserMessageHistoryRecord::UserMessageText
+                | UserMessageHistoryRecord::Override(_) => None,
+            };
+            if let Some(history_text) = history_text {
+                self.append_message_history_entry(history_text);
+            }
+
+            self.record_cancel_edit_candidate(UserMessage {
+                text: text.clone(),
+                local_images: local_images.clone(),
+                remote_image_urls: remote_image_urls.clone(),
+                text_elements: text_elements.clone(),
+                mention_bindings: mention_bindings.clone(),
+            });
+            let display = user_message_display_for_history(
+                UserMessage {
+                    text,
+                    local_images,
+                    remote_image_urls,
+                    text_elements,
+                    mention_bindings,
+                },
+                &history_record,
+            );
+            self.on_user_message_display(display);
+            self.transcript.needs_final_message_separator = false;
+            return (true, Some(op));
+        }
 
         let collaboration_mode = if self.collaboration_modes_enabled() {
             self.active_collaboration_mask

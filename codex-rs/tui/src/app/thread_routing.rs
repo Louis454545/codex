@@ -660,6 +660,9 @@ impl App {
                 }
                 Ok(true)
             }
+            AppCommand::UserInputAnswer { .. } | AppCommand::UserMessageToolResponse { .. } => {
+                Ok(false)
+            }
             AppCommand::ListSkills { cwds, force_reload } => {
                 self.handle_skills_list_result(
                     app_server

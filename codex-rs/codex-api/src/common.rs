@@ -180,13 +180,33 @@ impl From<VerbosityConfig> for OpenAiVerbosity {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ToolChoice {
+    Mode(String),
+    Function { r#type: String, name: String },
+}
+
+impl ToolChoice {
+    pub fn auto() -> Self {
+        Self::Mode("auto".to_string())
+    }
+
+    pub fn function(name: impl Into<String>) -> Self {
+        Self::Function {
+            r#type: "function".to_string(),
+            name: name.into(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct ResponsesApiRequest {
     pub model: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub instructions: String,
     pub input: Vec<ResponseItem>,
     pub tools: Vec<serde_json::Value>,
-    pub tool_choice: String,
+    pub tool_choice: ToolChoice,
     pub parallel_tool_calls: bool,
     pub reasoning: Option<Reasoning>,
     pub store: bool,
@@ -234,7 +254,7 @@ pub struct ResponseCreateWsRequest {
     pub previous_response_id: Option<String>,
     pub input: Vec<ResponseItem>,
     pub tools: Vec<Value>,
-    pub tool_choice: String,
+    pub tool_choice: ToolChoice,
     pub parallel_tool_calls: bool,
     pub reasoning: Option<Reasoning>,
     pub store: bool,

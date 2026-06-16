@@ -462,6 +462,8 @@ export type { ToolRequestUserInputOption } from "./ToolRequestUserInputOption";
 export type { ToolRequestUserInputParams } from "./ToolRequestUserInputParams";
 export type { ToolRequestUserInputQuestion } from "./ToolRequestUserInputQuestion";
 export type { ToolRequestUserInputResponse } from "./ToolRequestUserInputResponse";
+export type { ToolRequestUserMessageParams } from "./ToolRequestUserMessageParams";
+export type { ToolRequestUserMessageResponse } from "./ToolRequestUserMessageResponse";
 export type { ToolsV2 } from "./ToolsV2";
 export type { Turn } from "./Turn";
 export type { TurnCompletedNotification } from "./TurnCompletedNotification";

@@ -135,6 +135,7 @@ pub fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::ExecApprovalRequest(_)
         | EventMsg::RequestPermissions(_)
         | EventMsg::RequestUserInput(_)
+        | EventMsg::RequestUserMessage(_)
         | EventMsg::ElicitationRequest(_)
         | EventMsg::ApplyPatchApprovalRequest(_)
         | EventMsg::StreamError(_)

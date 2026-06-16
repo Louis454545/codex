@@ -1,4 +1,5 @@
 pub use codex_api::ResponseEvent;
+use codex_api::ToolChoice;
 use codex_config::types::Personality;
 use codex_protocol::error::Result;
 use codex_protocol::models::BaseInstructions;
@@ -37,6 +38,9 @@ pub struct Prompt {
 
     /// Whether the Responses API should strictly validate `output_schema`.
     pub output_schema_strict: bool,
+
+    /// Optional tool choice override for this model request.
+    pub tool_choice: Option<ToolChoice>,
 }
 
 impl Default for Prompt {
@@ -49,6 +53,7 @@ impl Default for Prompt {
             personality: None,
             output_schema: None,
             output_schema_strict: true,
+            tool_choice: None,
         }
     }
 }

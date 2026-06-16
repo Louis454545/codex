@@ -576,6 +576,7 @@ fn test_tool_runtime(session: Arc<Session>, turn_context: Arc<TurnContext>) -> T
             discoverable_tools: None,
             extension_tool_executors: Vec::new(),
             dynamic_tools: turn_context.dynamic_tools.as_slice(),
+            request_user_message_enabled: false,
         },
         &Default::default(),
     ));
@@ -9604,6 +9605,7 @@ async fn fatal_tool_error_stops_turn_and_reports_error() {
             discoverable_tools: None,
             extension_tool_executors: Vec::new(),
             dynamic_tools: turn_context.dynamic_tools.as_slice(),
+            request_user_message_enabled: false,
         },
         &Default::default(),
     );

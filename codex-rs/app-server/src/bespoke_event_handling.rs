@@ -69,6 +69,8 @@ use codex_app_server_protocol::ToolRequestUserInputOption;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_app_server_protocol::ToolRequestUserInputQuestion;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
+use codex_app_server_protocol::ToolRequestUserMessageParams;
+use codex_app_server_protocol::ToolRequestUserMessageResponse;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnDiffUpdatedNotification;
@@ -110,6 +112,7 @@ use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequest
 use codex_protocol::request_permissions::RequestPermissionsResponse as CoreRequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputAnswer as CoreRequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputResponse as CoreRequestUserInputResponse;
+use codex_protocol::request_user_message::RequestUserMessageResponse as CoreRequestUserMessageResponse;
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_shell_command::parse_command::shlex_join;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -694,6 +697,30 @@ pub(crate) async fn apply_bespoke_event_handling(
                 .await;
             tokio::spawn(async move {
                 on_request_user_input_response(
+                    event_turn_id,
+                    pending_request_id,
+                    rx,
+                    conversation,
+                    thread_state,
+                    user_input_guard,
+                )
+                .await;
+            });
+        }
+        EventMsg::RequestUserMessage(request) => {
+            let user_input_guard = thread_watch_manager
+                .note_user_input_requested(&conversation_id.to_string())
+                .await;
+            let params = ToolRequestUserMessageParams {
+                thread_id: conversation_id.to_string(),
+                turn_id: request.turn_id,
+                item_id: request.call_id,
+            };
+            let (pending_request_id, rx) = outgoing
+                .send_request(ServerRequestPayload::ToolRequestUserMessage(params))
+                .await;
+            tokio::spawn(async move {
+                on_request_user_message_response(
                     event_turn_id,
                     pending_request_id,
                     rx,
@@ -1738,6 +1765,56 @@ async fn on_request_user_input_response(
         .await
     {
         error!("failed to submit UserInputAnswer: {err}");
+    }
+}
+
+async fn on_request_user_message_response(
+    event_turn_id: String,
+    pending_request_id: RequestId,
+    receiver: oneshot::Receiver<ClientRequestResult>,
+    conversation: Arc<CodexThread>,
+    thread_state: Arc<Mutex<ThreadState>>,
+    user_input_guard: ThreadWatchActiveGuard,
+) {
+    let response = receiver.await;
+    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    drop(user_input_guard);
+    let value = match response {
+        Ok(Ok(value)) => value,
+        Ok(Err(err)) if is_turn_transition_server_request_error(&err) => return,
+        Ok(Err(err)) => {
+            error!("request failed with client error: {err:?}");
+            serde_json::to_value(ToolRequestUserMessageResponse { items: Vec::new() })
+                .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
+        }
+        Err(err) => {
+            error!("request failed: {err:?}");
+            serde_json::to_value(ToolRequestUserMessageResponse { items: Vec::new() })
+                .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
+        }
+    };
+
+    let response =
+        serde_json::from_value::<ToolRequestUserMessageResponse>(value).unwrap_or_else(|err| {
+            error!("failed to deserialize ToolRequestUserMessageResponse: {err}");
+            ToolRequestUserMessageResponse { items: Vec::new() }
+        });
+    let response = CoreRequestUserMessageResponse {
+        items: response
+            .items
+            .into_iter()
+            .map(codex_app_server_protocol::UserInput::into_core)
+            .collect(),
+    };
+
+    if let Err(err) = conversation
+        .submit(Op::UserMessageToolResponse {
+            id: event_turn_id,
+            response,
+        })
+        .await
+    {
+        error!("failed to submit UserMessageToolResponse: {err}");
     }
 }
 

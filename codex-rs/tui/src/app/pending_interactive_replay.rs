@@ -45,6 +45,8 @@ pub(super) struct PendingInteractiveReplayState {
     request_permissions_call_ids_by_turn_id: HashMap<String, Vec<String>>,
     request_user_input_call_ids: HashSet<String>,
     request_user_input_call_ids_by_turn_id: HashMap<String, Vec<String>>,
+    request_user_message_call_ids: HashSet<String>,
+    request_user_message_call_ids_by_turn_id: HashMap<String, Vec<String>>,
     pending_requests_by_request_id: HashMap<AppServerRequestId, PendingInteractiveRequest>,
 }
 
@@ -67,6 +69,10 @@ enum PendingInteractiveRequest {
         turn_id: String,
         item_id: String,
     },
+    RequestUserMessage {
+        turn_id: String,
+        item_id: String,
+    },
 }
 
 impl PendingInteractiveReplayState {
@@ -82,6 +88,7 @@ impl PendingInteractiveReplayState {
                 | AppCommand::ResolveElicitation { .. }
                 | AppCommand::RequestPermissionsResponse { .. }
                 | AppCommand::UserInputAnswer { .. }
+                | AppCommand::UserMessageToolResponse { .. }
                 | AppCommand::Shutdown
         )
     }
@@ -164,6 +171,26 @@ impl PendingInteractiveReplayState {
                     self.request_user_input_call_ids_by_turn_id.remove(id);
                 }
             }
+            AppCommand::UserMessageToolResponse { id, .. } => {
+                let mut remove_turn_entry = false;
+                if let Some(call_ids) = self.request_user_message_call_ids_by_turn_id.get_mut(id) {
+                    if !call_ids.is_empty() {
+                        let call_id = call_ids.remove(0);
+                        self.request_user_message_call_ids.remove(&call_id);
+                        self.pending_requests_by_request_id.retain(
+                            |_, pending| {
+                                !matches!(pending, PendingInteractiveRequest::RequestUserMessage { item_id, .. } if *item_id == call_id)
+                            },
+                        );
+                    }
+                    if call_ids.is_empty() {
+                        remove_turn_entry = true;
+                    }
+                }
+                if remove_turn_entry {
+                    self.request_user_message_call_ids_by_turn_id.remove(id);
+                }
+            }
             AppCommand::Shutdown => self.clear(),
             _ => {}
         }
@@ -230,6 +257,21 @@ impl PendingInteractiveReplayState {
                     },
                 );
             }
+            ServerRequest::ToolRequestUserMessage { request_id, params } => {
+                self.request_user_message_call_ids
+                    .insert(params.item_id.clone());
+                self.request_user_message_call_ids_by_turn_id
+                    .entry(params.turn_id.clone())
+                    .or_default()
+                    .push(params.item_id.clone());
+                self.pending_requests_by_request_id.insert(
+                    request_id.clone(),
+                    PendingInteractiveRequest::RequestUserMessage {
+                        turn_id: params.turn_id.clone(),
+                        item_id: params.item_id.clone(),
+                    },
+                );
+            }
             ServerRequest::PermissionsRequestApproval { request_id, params } => {
                 self.request_permissions_call_ids
                     .insert(params.item_id.clone());
@@ -273,6 +315,7 @@ impl PendingInteractiveReplayState {
                 self.clear_patch_approval_turn(&notification.turn.id);
                 self.clear_request_permissions_turn(&notification.turn.id);
                 self.clear_request_user_input_turn(&notification.turn.id);
+                self.clear_request_user_message_turn(&notification.turn.id);
             }
             ServerNotification::ServerRequestResolved(notification) => {
                 self.remove_request(&notification.request_id);
@@ -328,6 +371,23 @@ impl PendingInteractiveReplayState {
                         .remove(&params.turn_id);
                 }
             }
+            ServerRequest::ToolRequestUserMessage { params, .. } => {
+                self.request_user_message_call_ids.remove(&params.item_id);
+                let mut remove_turn_entry = false;
+                if let Some(call_ids) = self
+                    .request_user_message_call_ids_by_turn_id
+                    .get_mut(&params.turn_id)
+                {
+                    call_ids.retain(|call_id| call_id != &params.item_id);
+                    if call_ids.is_empty() {
+                        remove_turn_entry = true;
+                    }
+                }
+                if remove_turn_entry {
+                    self.request_user_message_call_ids_by_turn_id
+                        .remove(&params.turn_id);
+                }
+            }
             ServerRequest::PermissionsRequestApproval { params, .. } => {
                 self.request_permissions_call_ids.remove(&params.item_id);
                 let mut remove_turn_entry = false;
@@ -368,6 +428,9 @@ impl PendingInteractiveReplayState {
             ServerRequest::ToolRequestUserInput { params, .. } => {
                 self.request_user_input_call_ids.contains(&params.item_id)
             }
+            ServerRequest::ToolRequestUserMessage { params, .. } => {
+                self.request_user_message_call_ids.contains(&params.item_id)
+            }
             ServerRequest::PermissionsRequestApproval { params, .. } => {
                 self.request_permissions_call_ids.contains(&params.item_id)
             }
@@ -384,6 +447,23 @@ impl PendingInteractiveReplayState {
 
     pub(super) fn has_pending_thread_user_input(&self) -> bool {
         !self.request_user_input_call_ids.is_empty()
+            || !self.request_user_message_call_ids.is_empty()
+    }
+
+    fn clear_request_user_message_turn(&mut self, turn_id: &str) {
+        if let Some(call_ids) = self
+            .request_user_message_call_ids_by_turn_id
+            .remove(turn_id)
+        {
+            for call_id in call_ids {
+                self.request_user_message_call_ids.remove(&call_id);
+            }
+        }
+        self.pending_requests_by_request_id.retain(
+            |_, pending| {
+                !matches!(pending, PendingInteractiveRequest::RequestUserMessage { turn_id: pending_turn_id, .. } if pending_turn_id == turn_id)
+            },
+        );
     }
 
     fn clear_request_user_input_turn(&mut self, turn_id: &str) {
@@ -475,6 +555,8 @@ impl PendingInteractiveReplayState {
         self.request_permissions_call_ids_by_turn_id.clear();
         self.request_user_input_call_ids.clear();
         self.request_user_input_call_ids_by_turn_id.clear();
+        self.request_user_message_call_ids.clear();
+        self.request_user_message_call_ids_by_turn_id.clear();
         self.pending_requests_by_request_id.clear();
     }
 
@@ -521,6 +603,14 @@ impl PendingInteractiveReplayState {
                     &item_id,
                 );
             }
+            PendingInteractiveRequest::RequestUserMessage { turn_id, item_id } => {
+                self.request_user_message_call_ids.remove(&item_id);
+                Self::remove_call_id_from_turn_map_entry(
+                    &mut self.request_user_message_call_ids_by_turn_id,
+                    &turn_id,
+                    &item_id,
+                );
+            }
         }
     }
 
@@ -554,6 +644,10 @@ impl PendingInteractiveReplayState {
             (
                 PendingInteractiveRequest::RequestUserInput { turn_id, item_id },
                 ServerRequest::ToolRequestUserInput { params, .. },
+            ) => turn_id == &params.turn_id && item_id == &params.item_id,
+            (
+                PendingInteractiveRequest::RequestUserMessage { turn_id, item_id },
+                ServerRequest::ToolRequestUserMessage { params, .. },
             ) => turn_id == &params.turn_id && item_id == &params.item_id,
             _ => false,
         }

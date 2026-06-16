@@ -384,6 +384,9 @@ async fn run_turn(thread: &CodexThread, thread_id: &str, prompt: String) -> anyh
             EventMsg::RequestUserInput(_) => {
                 bail!("turn requested user input");
             }
+            EventMsg::RequestUserMessage(_) => {
+                bail!("turn requested a user message");
+            }
             EventMsg::DynamicToolCallRequest(_) => {
                 bail!("turn requested a dynamic tool call");
             }

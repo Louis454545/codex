@@ -20,6 +20,7 @@ use crate::tools::handlers::ReadMcpResourceHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
 use crate::tools::handlers::RequestPluginInstallHandler;
 use crate::tools::handlers::RequestUserInputHandler;
+use crate::tools::handlers::RequestUserMessageHandler;
 use crate::tools::handlers::ShellCommandHandler;
 use crate::tools::handlers::ShellCommandHandlerOptions;
 use crate::tools::handlers::SleepHandler;
@@ -148,6 +149,7 @@ struct CoreToolPlanContext<'a> {
     discoverable_tools: Option<&'a [DiscoverableTool]>,
     extension_tool_executors: &'a [Arc<dyn ToolExecutor<ExtensionToolCall>>],
     dynamic_tools: &'a [DynamicToolSpec],
+    request_user_message_enabled: bool,
     tool_search_handler_cache: &'a ToolSearchHandlerCache,
     default_agent_type_description: &'a str,
     wait_agent_timeouts: WaitAgentTimeoutOptions,
@@ -176,6 +178,7 @@ fn build_tool_specs_and_registry(
         discoverable_tools,
         extension_tool_executors,
         dynamic_tools,
+        request_user_message_enabled,
     } = params;
     let default_agent_type_description =
         crate::agent::role::spawn_tool_spec::build(&std::collections::BTreeMap::new());
@@ -186,6 +189,7 @@ fn build_tool_specs_and_registry(
         discoverable_tools: discoverable_tools.as_deref(),
         extension_tool_executors: &extension_tool_executors,
         dynamic_tools,
+        request_user_message_enabled,
         tool_search_handler_cache,
         default_agent_type_description: &default_agent_type_description,
         wait_agent_timeouts: wait_agent_timeout_options(turn_context),
@@ -656,6 +660,10 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
             },
             ToolExposure::DirectModelOnly,
         );
+    }
+
+    if context.request_user_message_enabled {
+        planned_tools.add_with_exposure(RequestUserMessageHandler, ToolExposure::DirectModelOnly);
     }
 
     if features.enabled(Feature::RequestPermissionsTool) {

@@ -25,6 +25,7 @@ pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
     pub(crate) history: ContextManager,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
+    low_5h_quota_active: bool,
     pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
@@ -50,6 +51,7 @@ impl SessionState {
             session_configuration,
             history,
             latest_rate_limits: None,
+            low_5h_quota_active: false,
             server_reasoning_included: false,
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
@@ -175,10 +177,34 @@ impl SessionState {
     }
 
     pub(crate) fn set_rate_limits(&mut self, snapshot: RateLimitSnapshot) {
+        self.update_low_5h_quota_active(&snapshot);
         self.latest_rate_limits = Some(merge_rate_limit_fields(
             self.latest_rate_limits.as_ref(),
             snapshot,
         ));
+    }
+
+    pub(crate) fn low_5h_quota_active(&self) -> bool {
+        self.low_5h_quota_active
+    }
+
+    fn update_low_5h_quota_active(&mut self, snapshot: &RateLimitSnapshot) {
+        let is_codex_limit = snapshot
+            .limit_id
+            .as_deref()
+            .is_none_or(|limit_id| limit_id.eq_ignore_ascii_case("codex"));
+        if !is_codex_limit {
+            return;
+        }
+
+        let Some(primary) = snapshot.primary.as_ref() else {
+            return;
+        };
+        if primary.window_minutes != Some(300) {
+            return;
+        }
+
+        self.low_5h_quota_active = primary.used_percent >= 95.0;
     }
 
     pub(crate) fn token_info_and_rate_limits(

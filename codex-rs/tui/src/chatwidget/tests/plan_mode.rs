@@ -532,6 +532,15 @@ fn plan_mode_prompt_notification_uses_dedicated_type_name() {
     );
 }
 
+#[test]
+fn request_user_message_notification_snapshot() {
+    let notification = Notification::PlanModePrompt {
+        title: "Response requested".to_string(),
+    };
+
+    insta::assert_snapshot!(notification.display(), @"Plan mode prompt: Response requested");
+}
+
 #[tokio::test]
 async fn open_plan_implementation_prompt_sets_pending_notification() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
@@ -572,6 +581,28 @@ async fn agent_turn_complete_does_not_override_pending_plan_mode_prompt_notifica
     assert_matches!(
         chat.pending_notification,
         Some(Notification::PlanModePrompt { ref title }) if title == PLAN_IMPLEMENTATION_TITLE
+    );
+}
+
+#[tokio::test]
+async fn handle_request_user_message_sets_pending_notification_and_request() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    chat.config.tui_notifications.notifications =
+        Notifications::Custom(vec!["plan-mode-prompt".to_string()]);
+
+    chat.handle_request_user_message_now(ToolRequestUserMessageParams {
+        thread_id: "thread-1".to_string(),
+        item_id: "call-1".to_string(),
+        turn_id: "turn-1".to_string(),
+    });
+
+    assert_matches!(
+        chat.pending_notification,
+        Some(Notification::PlanModePrompt { ref title }) if title == "Response requested"
+    );
+    assert_matches!(
+        chat.pending_request_user_message,
+        Some(ToolRequestUserMessageParams { ref item_id, .. }) if item_id == "call-1"
     );
 }
 

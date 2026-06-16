@@ -43,6 +43,7 @@ pub(crate) struct ToolRouterParams<'a> {
     pub(crate) discoverable_tools: Option<Vec<DiscoverableTool>>,
     pub(crate) extension_tool_executors: Vec<Arc<dyn ToolExecutor<ExtensionToolCall>>>,
     pub(crate) dynamic_tools: &'a [DynamicToolSpec],
+    pub(crate) request_user_message_enabled: bool,
 }
 
 impl ToolRouter {

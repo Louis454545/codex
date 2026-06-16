@@ -5482,6 +5482,31 @@
           "type": "object"
         },
         {
+          "description": "EXPERIMENTAL - Request a normal composer message from the user for a tool call.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "item/tool/requestUserMessage"
+              ],
+              "title": "Item/tool/requestUserMessageRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ToolRequestUserMessageParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Item/tool/requestUserMessageRequest",
+          "type": "object"
+        },
+        {
           "description": "Request input for an MCP server elicitation.",
           "properties": {
             "id": {
@@ -5779,6 +5804,45 @@
         "answers"
       ],
       "title": "ToolRequestUserInputResponse",
+      "type": "object"
+    },
+    "ToolRequestUserMessageParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "EXPERIMENTAL. Params sent with a request_user_message event.",
+      "properties": {
+        "itemId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "threadId",
+        "turnId"
+      ],
+      "title": "ToolRequestUserMessageParams",
+      "type": "object"
+    },
+    "ToolRequestUserMessageResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "EXPERIMENTAL. Response payload containing a normal user composer message.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/definitions/v2/UserInput"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ToolRequestUserMessageResponse",
       "type": "object"
     },
     "W3cTraceContext": {

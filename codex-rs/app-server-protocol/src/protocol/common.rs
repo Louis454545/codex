@@ -1441,6 +1441,12 @@ server_request_definitions! {
         response: v2::ToolRequestUserInputResponse,
     },
 
+    /// EXPERIMENTAL - Request a normal composer message from the user for a tool call.
+    ToolRequestUserMessage => "item/tool/requestUserMessage" {
+        params: v2::ToolRequestUserMessageParams,
+        response: v2::ToolRequestUserMessageResponse,
+    },
+
     /// Request input for an MCP server elicitation.
     McpServerElicitationRequest => "mcpServer/elicitation/request" {
         params: v2::McpServerElicitationRequestParams,

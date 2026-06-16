@@ -51,6 +51,7 @@ use crate::plan_tool::UpdatePlanArgs;
 use crate::request_permissions::RequestPermissionsEvent;
 use crate::request_permissions::RequestPermissionsResponse;
 use crate::request_user_input::RequestUserInputResponse;
+use crate::request_user_message::RequestUserMessageResponse;
 use crate::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
@@ -89,6 +90,7 @@ pub use crate::permissions::NetworkSandboxPolicy;
 use crate::permissions::default_read_only_subpaths_for_writable_root;
 pub use crate::request_permissions::RequestPermissionsArgs;
 pub use crate::request_user_input::RequestUserInputEvent;
+pub use crate::request_user_message::RequestUserMessageEvent;
 
 /// Open/close tags for special user-input blocks. Used across crates to avoid
 /// duplicated hardcoded strings.
@@ -593,6 +595,14 @@ pub enum Op {
         response: RequestUserInputResponse,
     },
 
+    /// Resolve a request_user_message tool call.
+    UserMessageToolResponse {
+        /// Turn id for the in-flight request.
+        id: String,
+        /// User-provided composer message.
+        response: RequestUserMessageResponse,
+    },
+
     /// Resolve a request_permissions tool call.
     RequestPermissionsResponse {
         /// Call id for the in-flight request.
@@ -801,6 +811,7 @@ impl Op {
             Self::PatchApproval { .. } => "patch_approval",
             Self::ResolveElicitation { .. } => "resolve_elicitation",
             Self::UserInputAnswer { .. } => "user_input_answer",
+            Self::UserMessageToolResponse { .. } => "user_message_tool_response",
             Self::RequestPermissionsResponse { .. } => "request_permissions_response",
             Self::DynamicToolResponse { .. } => "dynamic_tool_response",
             Self::RefreshMcpServers { .. } => "refresh_mcp_servers",
@@ -1321,6 +1332,8 @@ pub enum EventMsg {
     RequestPermissions(RequestPermissionsEvent),
 
     RequestUserInput(RequestUserInputEvent),
+
+    RequestUserMessage(RequestUserMessageEvent),
 
     DynamicToolCallRequest(DynamicToolCallRequest),
 

@@ -276,6 +276,11 @@ impl ChatWidget {
         );
     }
 
+    pub(super) fn on_request_user_message(&mut self, ev: ToolRequestUserMessageParams) {
+        self.record_visible_turn_activity();
+        self.handle_request_user_message_now(ev);
+    }
+
     pub(super) fn on_request_permissions(&mut self, ev: RequestPermissionsEvent) {
         self.record_visible_turn_activity();
         let ev2 = ev.clone();
@@ -428,6 +433,19 @@ impl ChatWidget {
         };
         self.notify(Notification::PlanModePrompt { title });
         self.bottom_pane.push_user_input_request(ev);
+        self.set_ambient_pet_notification(
+            crate::pets::PetNotificationKind::Waiting,
+            /*body*/ None,
+        );
+        self.request_redraw();
+    }
+
+    pub(crate) fn handle_request_user_message_now(&mut self, ev: ToolRequestUserMessageParams) {
+        self.flush_answer_stream_with_separator();
+        self.notify(Notification::PlanModePrompt {
+            title: "Response requested".to_string(),
+        });
+        self.pending_request_user_message = Some(ev);
         self.set_ambient_pet_notification(
             crate::pets::PetNotificationKind::Waiting,
             /*body*/ None,

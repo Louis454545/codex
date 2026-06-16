@@ -113,6 +113,8 @@ use codex_app_server_protocol::ThreadSettings;
 use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
 use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::ToolRequestUserInputParams;
+use codex_app_server_protocol::ToolRequestUserMessageParams;
+use codex_app_server_protocol::ToolRequestUserMessageResponse;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnPlanStepStatus;
@@ -607,6 +609,7 @@ pub(crate) struct ChatWidget {
     newly_installed_marketplace_tab_id: Option<String>,
     // Queue of interruptive UI events deferred during an active write cycle
     interrupts: InterruptManager,
+    pending_request_user_message: Option<ToolRequestUserMessageParams>,
     // Accumulates the current reasoning block text to extract a header
     reasoning_buffer: String,
     // Accumulates full reasoning content for transcript-only recording
@@ -982,7 +985,21 @@ impl ChatWidget {
         // materialized in the bottom pane or still deferred behind active streaming.
         let removed_deferred = self.interrupts.remove_resolved_prompt(request);
         let removed_visible = self.bottom_pane.dismiss_app_server_request(request);
-        if removed_deferred || removed_visible {
+        let removed_user_message = match request {
+            ResolvedAppServerRequest::UserMessage { call_id } => self
+                .pending_request_user_message
+                .as_ref()
+                .is_some_and(|pending| pending.item_id == *call_id),
+            ResolvedAppServerRequest::ExecApproval { .. }
+            | ResolvedAppServerRequest::FileChangeApproval { .. }
+            | ResolvedAppServerRequest::PermissionsApproval { .. }
+            | ResolvedAppServerRequest::UserInput { .. }
+            | ResolvedAppServerRequest::McpElicitation { .. } => false,
+        };
+        if removed_user_message {
+            self.pending_request_user_message = None;
+        }
+        if removed_deferred || removed_visible || removed_user_message {
             self.request_redraw();
         }
     }

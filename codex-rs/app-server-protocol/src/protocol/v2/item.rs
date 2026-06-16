@@ -1499,3 +1499,21 @@ pub struct ToolRequestUserInputAnswer {
 pub struct ToolRequestUserInputResponse {
     pub answers: HashMap<String, ToolRequestUserInputAnswer>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+/// EXPERIMENTAL. Params sent with a request_user_message event.
+pub struct ToolRequestUserMessageParams {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+/// EXPERIMENTAL. Response payload containing a normal user composer message.
+pub struct ToolRequestUserMessageResponse {
+    pub items: Vec<UserInput>,
+}

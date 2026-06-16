@@ -13,6 +13,7 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::request_permissions::RequestPermissionProfile;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::request_user_message::RequestUserMessageResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_sandboxing::policy_transforms::merge_permission_profiles;
 use rmcp::model::RequestId;
@@ -88,6 +89,7 @@ pub(crate) struct TurnState {
     pending_approvals: HashMap<String, oneshot::Sender<ReviewDecision>>,
     pending_request_permissions: HashMap<String, PendingRequestPermissions>,
     pending_user_input: HashMap<String, oneshot::Sender<RequestUserInputResponse>>,
+    pending_user_message: HashMap<String, oneshot::Sender<RequestUserMessageResponse>>,
     pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
     pending_dynamic_tools: HashMap<String, oneshot::Sender<DynamicToolResponse>>,
     pub(crate) pending_input: TurnInputQueue,
@@ -125,6 +127,7 @@ impl TurnState {
         self.pending_approvals.clear();
         self.pending_request_permissions.clear();
         self.pending_user_input.clear();
+        self.pending_user_message.clear();
         self.pending_elicitations.clear();
         self.pending_dynamic_tools.clear();
     }
@@ -158,6 +161,21 @@ impl TurnState {
         key: &str,
     ) -> Option<oneshot::Sender<RequestUserInputResponse>> {
         self.pending_user_input.remove(key)
+    }
+
+    pub(crate) fn insert_pending_user_message(
+        &mut self,
+        key: String,
+        tx: oneshot::Sender<RequestUserMessageResponse>,
+    ) -> Option<oneshot::Sender<RequestUserMessageResponse>> {
+        self.pending_user_message.insert(key, tx)
+    }
+
+    pub(crate) fn remove_pending_user_message(
+        &mut self,
+        key: &str,
+    ) -> Option<oneshot::Sender<RequestUserMessageResponse>> {
+        self.pending_user_message.remove(key)
     }
 
     pub(crate) fn insert_pending_elicitation(
