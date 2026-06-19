@@ -207,6 +207,18 @@ pub trait TokenUsageContributor: Send + Sync {
     }
 }
 
+/// Extension policy that can suppress host-owned interactive handoff tools.
+///
+/// Implementations should return true only while extension-owned automatic
+/// continuation would otherwise be interrupted by a user-message request.
+pub trait InteractiveHandoffPolicyContributor: Send + Sync {
+    fn suppress_request_user_message<'a>(
+        &'a self,
+        session_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+    ) -> ExtensionFuture<'a, bool>;
+}
+
 /// Extension contribution that exposes native tools owned by a feature.
 pub trait ToolContributor: Send + Sync {
     /// Returns the native tools visible for the supplied extension stores.

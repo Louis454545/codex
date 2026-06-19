@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
@@ -136,6 +137,26 @@ async fn low_5h_quota_forces_request_user_message_recovery() -> anyhow::Result<(
     assert_eq!(request.call_id, call_id);
 
     codex
+        .submit(Op::ThreadSettings {
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                    mode: codex_protocol::config_types::ModeKind::Plan,
+                    settings: codex_protocol::config_types::Settings {
+                        model: "different-model-must-not-apply-mid-turn".to_string(),
+                        reasoning_effort: Some(ReasoningEffort::High),
+                        developer_instructions: Some("PLAN_MODE_SENTINEL".to_string()),
+                    },
+                }),
+                ..Default::default()
+            },
+        })
+        .await?;
+    wait_for_event(&codex, |event| {
+        matches!(event, EventMsg::ThreadSettingsApplied(_))
+    })
+    .await;
+
+    codex
         .submit(Op::UserMessageToolResponse {
             id: request.turn_id,
             response: RequestUserMessageResponse {
@@ -143,6 +164,7 @@ async fn low_5h_quota_forces_request_user_message_recovery() -> anyhow::Result<(
                     text: "continue please".to_string(),
                     text_elements: Vec::new(),
                 }],
+                context_action: Default::default(),
             },
         })
         .await?;
@@ -171,6 +193,19 @@ async fn low_5h_quota_forces_request_user_message_recovery() -> anyhow::Result<(
         .expect("request_user_message output should be present");
     assert_eq!(content, Some("continue please".to_string()));
     assert_eq!(success, None);
+    assert_eq!(
+        requests[2].body_json().get("model"),
+        requests[1].body_json().get("model")
+    );
+    assert_eq!(
+        requests[2].body_json().get("reasoning"),
+        requests[1].body_json().get("reasoning")
+    );
+    assert!(
+        requests[2].body_json()["input"]
+            .to_string()
+            .contains("PLAN_MODE_SENTINEL")
+    );
 
     Ok(())
 }

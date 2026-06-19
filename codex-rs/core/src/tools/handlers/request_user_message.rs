@@ -1,4 +1,6 @@
 use crate::function_tool::FunctionCallError;
+use crate::session::TurnInput;
+use crate::session::turn::build_skills_and_plugins;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
@@ -7,6 +9,7 @@ use crate::tools::handlers::request_user_message_spec::REQUEST_USER_MESSAGE_TOOL
 use crate::tools::handlers::request_user_message_spec::create_request_user_message_tool;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolExecutor;
+use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::request_user_message::user_input_to_function_output_content;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
@@ -37,6 +40,7 @@ impl RequestUserMessageHandler {
             turn,
             call_id,
             payload,
+            cancellation_token,
             ..
         } = invocation;
 
@@ -55,6 +59,24 @@ impl RequestUserMessageHandler {
             ));
         }
 
+        if session
+            .services
+            .extensions
+            .suppress_request_user_message(
+                &session.services.session_extension_data,
+                &session.services.thread_extension_data,
+            )
+            .await
+        {
+            return Ok(boxed_tool_output(FunctionToolOutput::from_content(
+                vec![FunctionCallOutputContentItem::InputText {
+                    text: "An active goal owns automatic continuation; continue working on it."
+                        .to_string(),
+                }],
+                Some(true),
+            )));
+        }
+
         let response = session
             .request_user_message(turn.as_ref(), call_id)
             .await
@@ -63,6 +85,37 @@ impl RequestUserMessageHandler {
                     "{REQUEST_USER_MESSAGE_TOOL_NAME} was cancelled before receiving a response"
                 ))
             })?;
+        let turn_state = session
+            .input_queue
+            .turn_state_for_sub_id(&session.active_turn, &turn.sub_id)
+            .await;
+        if let Some(turn_state) = turn_state {
+            turn_state
+                .lock()
+                .await
+                .set_request_user_message_context_action(response.context_action);
+        }
+        let input = TurnInput::UserInput {
+            content: response.items.clone(),
+            client_id: None,
+        };
+        if let Some((injection_items, explicitly_enabled_connectors)) = build_skills_and_plugins(
+            &session,
+            turn.as_ref(),
+            std::slice::from_ref(&input),
+            &cancellation_token,
+        )
+        .await
+        {
+            session
+                .merge_connector_selection(explicitly_enabled_connectors)
+                .await;
+            for item in injection_items {
+                session
+                    .record_conversation_items(&turn, std::slice::from_ref(&item))
+                    .await;
+            }
+        }
         let content = user_input_to_function_output_content(response.items);
 
         Ok(boxed_tool_output(FunctionToolOutput::from_content(

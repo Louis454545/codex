@@ -12,6 +12,16 @@ use crate::user_input::UserInput;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
 pub struct RequestUserMessageResponse {
     pub items: Vec<UserInput>,
+    #[serde(default)]
+    pub context_action: RequestUserMessageContextAction,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestUserMessageContextAction {
+    #[default]
+    Continue,
+    Compact,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]

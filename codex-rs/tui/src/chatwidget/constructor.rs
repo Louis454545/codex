@@ -169,6 +169,7 @@ impl ChatWidget {
             newly_installed_marketplace_tab_id: None,
             interrupts: InterruptManager::new(),
             pending_request_user_message: None,
+            pending_request_user_message_context_action: Default::default(),
             reasoning_buffer: String::new(),
             full_reasoning_buffer: String::new(),
             status_state: StatusState::default(),

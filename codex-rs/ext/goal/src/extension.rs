@@ -8,6 +8,7 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::InteractiveHandoffPolicyContributor;
 use codex_extension_api::ThreadIdleInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadResumeInput;
@@ -70,6 +71,39 @@ pub struct GoalExtension<C> {
 impl<C> std::fmt::Debug for GoalExtension<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GoalExtension").finish_non_exhaustive()
+    }
+}
+
+impl<C> InteractiveHandoffPolicyContributor for GoalExtension<C>
+where
+    C: Send + Sync + 'static,
+{
+    fn suppress_request_user_message<'a>(
+        &'a self,
+        _session_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+    ) -> ExtensionFuture<'a, bool> {
+        Box::pin(async move {
+            let Some(runtime) = goal_runtime_handle(thread_store) else {
+                return false;
+            };
+            if !runtime.is_enabled() {
+                return false;
+            }
+            self.state_dbs
+                .thread_goals()
+                .get_thread_goal(runtime.thread_id())
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|goal| {
+                    matches!(
+                        goal.status,
+                        codex_state::ThreadGoalStatus::Active
+                            | codex_state::ThreadGoalStatus::BudgetLimited
+                    )
+                })
+        })
     }
 }
 
@@ -473,6 +507,7 @@ pub fn install_with_backend<C>(
     registry.turn_lifecycle_contributor(extension.clone());
     registry.token_usage_contributor(extension.clone());
     registry.tool_lifecycle_contributor(extension.clone());
+    registry.interactive_handoff_policy_contributor(extension.clone());
     registry.tool_contributor(extension);
 }
 

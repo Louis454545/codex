@@ -113,6 +113,7 @@ use codex_app_server_protocol::ThreadSettings;
 use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
 use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::ToolRequestUserInputParams;
+use codex_app_server_protocol::ToolRequestUserMessageContextAction;
 use codex_app_server_protocol::ToolRequestUserMessageParams;
 use codex_app_server_protocol::ToolRequestUserMessageResponse;
 use codex_app_server_protocol::Turn;
@@ -610,6 +611,7 @@ pub(crate) struct ChatWidget {
     // Queue of interruptive UI events deferred during an active write cycle
     interrupts: InterruptManager,
     pending_request_user_message: Option<ToolRequestUserMessageParams>,
+    pending_request_user_message_context_action: ToolRequestUserMessageContextAction,
     // Accumulates the current reasoning block text to extract a header
     reasoning_buffer: String,
     // Accumulates full reasoning content for transcript-only recording

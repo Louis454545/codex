@@ -5806,6 +5806,13 @@
       "title": "ToolRequestUserInputResponse",
       "type": "object"
     },
+    "ToolRequestUserMessageContextAction": {
+      "enum": [
+        "continue",
+        "compact"
+      ],
+      "type": "string"
+    },
     "ToolRequestUserMessageParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "EXPERIMENTAL. Params sent with a request_user_message event.",
@@ -5832,6 +5839,14 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "EXPERIMENTAL. Response payload containing a normal user composer message.",
       "properties": {
+        "contextAction": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolRequestUserMessageContextAction"
+            }
+          ],
+          "default": "continue"
+        },
         "items": {
           "items": {
             "$ref": "#/definitions/v2/UserInput"

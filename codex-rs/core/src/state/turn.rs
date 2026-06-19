@@ -13,6 +13,7 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::request_permissions::RequestPermissionProfile;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::request_user_message::RequestUserMessageContextAction;
 use codex_protocol::request_user_message::RequestUserMessageResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_sandboxing::policy_transforms::merge_permission_profiles;
@@ -90,6 +91,7 @@ pub(crate) struct TurnState {
     pending_request_permissions: HashMap<String, PendingRequestPermissions>,
     pending_user_input: HashMap<String, oneshot::Sender<RequestUserInputResponse>>,
     pending_user_message: HashMap<String, oneshot::Sender<RequestUserMessageResponse>>,
+    request_user_message_context_action: Option<RequestUserMessageContextAction>,
     pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
     pending_dynamic_tools: HashMap<String, oneshot::Sender<DynamicToolResponse>>,
     pub(crate) pending_input: TurnInputQueue,
@@ -176,6 +178,28 @@ impl TurnState {
         key: &str,
     ) -> Option<oneshot::Sender<RequestUserMessageResponse>> {
         self.pending_user_message.remove(key)
+    }
+
+    pub(crate) fn set_request_user_message_context_action(
+        &mut self,
+        action: RequestUserMessageContextAction,
+    ) {
+        self.request_user_message_context_action =
+            Some(match (self.request_user_message_context_action, action) {
+                (Some(RequestUserMessageContextAction::Compact), _)
+                | (_, RequestUserMessageContextAction::Compact) => {
+                    RequestUserMessageContextAction::Compact
+                }
+                (None | Some(RequestUserMessageContextAction::Continue), _) => {
+                    RequestUserMessageContextAction::Continue
+                }
+            });
+    }
+
+    pub(crate) fn take_request_user_message_context_action(
+        &mut self,
+    ) -> Option<RequestUserMessageContextAction> {
+        self.request_user_message_context_action.take()
     }
 
     pub(crate) fn insert_pending_elicitation(

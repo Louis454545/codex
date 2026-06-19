@@ -178,6 +178,73 @@ enum TurnMultiAgentRuntime {
 }
 
 impl TurnContext {
+    /// Applies a collaboration-mode transition without changing the model or
+    /// reasoning settings selected when the turn started.
+    pub(crate) fn with_collaboration_mode(
+        &self,
+        mut collaboration_mode: CollaborationMode,
+    ) -> Self {
+        collaboration_mode = collaboration_mode.with_updates(
+            Some(self.model_info.slug.clone()),
+            Some(self.reasoning_effort.clone()),
+            /*developer_instructions*/ None,
+        );
+        Self {
+            sub_id: self.sub_id.clone(),
+            trace_id: self.trace_id.clone(),
+            realtime_active: self.realtime_active,
+            config: Arc::clone(&self.config),
+            auth_manager: self.auth_manager.clone(),
+            model_info: self.model_info.clone(),
+            comp_hash: self.comp_hash.clone(),
+            tool_mode: self.tool_mode,
+            session_telemetry: self.session_telemetry.clone(),
+            provider: self.provider.clone(),
+            reasoning_effort: self.reasoning_effort.clone(),
+            reasoning_summary: self.reasoning_summary,
+            session_source: self.session_source.clone(),
+            parent_thread_id: self.parent_thread_id,
+            thread_source: self.thread_source.clone(),
+            environments: self.environments.clone(),
+            #[allow(deprecated)]
+            cwd: self.cwd.clone(),
+            current_date: self.current_date.clone(),
+            timezone: self.timezone.clone(),
+            app_server_client_name: self.app_server_client_name.clone(),
+            developer_instructions: self.developer_instructions.clone(),
+            compact_prompt: self.compact_prompt.clone(),
+            user_instructions: self.user_instructions.clone(),
+            collaboration_mode,
+            multi_agent_version: self.multi_agent_version,
+            personality: self.personality,
+            approval_policy: self.approval_policy.clone(),
+            permission_profile: self.permission_profile.clone(),
+            network: self.network.clone(),
+            windows_sandbox_level: self.windows_sandbox_level,
+            shell_environment_policy: self.shell_environment_policy.clone(),
+            available_models: self.available_models.clone(),
+            unified_exec_shell_mode: self.unified_exec_shell_mode.clone(),
+            features: self.features.clone(),
+            ghost_snapshot: self.ghost_snapshot.clone(),
+            final_output_json_schema: self.final_output_json_schema.clone(),
+            codex_self_exe: self.codex_self_exe.clone(),
+            codex_linux_sandbox_exe: self.codex_linux_sandbox_exe.clone(),
+            truncation_policy: self.truncation_policy,
+            dynamic_tools: self.dynamic_tools.clone(),
+            turn_metadata_state: Arc::clone(&self.turn_metadata_state),
+            extension_data: Arc::clone(&self.extension_data),
+            turn_skills: self.turn_skills.clone(),
+            turn_timing_state: Arc::clone(&self.turn_timing_state),
+            terminal_error: Arc::clone(&self.terminal_error),
+            server_model_warning_emitted: AtomicBool::new(
+                self.server_model_warning_emitted.load(Ordering::Relaxed),
+            ),
+            model_verification_emitted: AtomicBool::new(
+                self.model_verification_emitted.load(Ordering::Relaxed),
+            ),
+        }
+    }
+
     pub(crate) fn permission_profile(&self) -> PermissionProfile {
         self.permission_profile.clone()
     }

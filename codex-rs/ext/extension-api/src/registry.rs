@@ -7,6 +7,7 @@ use crate::ConfigContributor;
 use crate::ContextContributor;
 use crate::ExtensionData;
 use crate::ExtensionEventSink;
+use crate::InteractiveHandoffPolicyContributor;
 use crate::McpServerContributor;
 use crate::NoopExtensionEventSink;
 use crate::ThreadLifecycleContributor;
@@ -31,6 +32,7 @@ pub struct ExtensionRegistryBuilder<C: Sync> {
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
     turn_item_contributors: Vec<Arc<dyn TurnItemContributor>>,
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
+    interactive_handoff_policy_contributors: Vec<Arc<dyn InteractiveHandoffPolicyContributor>>,
 }
 
 impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
@@ -48,6 +50,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
             tool_contributors: Vec::new(),
             tool_lifecycle_contributors: Vec::new(),
             turn_item_contributors: Vec::new(),
+            interactive_handoff_policy_contributors: Vec::new(),
         }
     }
 }
@@ -74,6 +77,14 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
     /// Registers one approval-review contributor.
     pub fn approval_review_contributor(&mut self, contributor: Arc<dyn ApprovalReviewContributor>) {
         self.approval_review_contributors.push(contributor);
+    }
+
+    pub fn interactive_handoff_policy_contributor(
+        &mut self,
+        contributor: Arc<dyn InteractiveHandoffPolicyContributor>,
+    ) {
+        self.interactive_handoff_policy_contributors
+            .push(contributor);
     }
 
     /// Registers one thread-lifecycle contributor.
@@ -144,6 +155,7 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
             tool_contributors: self.tool_contributors,
             tool_lifecycle_contributors: self.tool_lifecycle_contributors,
             turn_item_contributors: self.turn_item_contributors,
+            interactive_handoff_policy_contributors: self.interactive_handoff_policy_contributors,
         }
     }
 }
@@ -162,9 +174,26 @@ pub struct ExtensionRegistry<C: Sync> {
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
     turn_item_contributors: Vec<Arc<dyn TurnItemContributor>>,
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
+    interactive_handoff_policy_contributors: Vec<Arc<dyn InteractiveHandoffPolicyContributor>>,
 }
 
 impl<C: Sync> ExtensionRegistry<C> {
+    pub async fn suppress_request_user_message(
+        &self,
+        session_store: &ExtensionData,
+        thread_store: &ExtensionData,
+    ) -> bool {
+        for contributor in &self.interactive_handoff_policy_contributors {
+            if contributor
+                .suppress_request_user_message(session_store, thread_store)
+                .await
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Returns the host event sink retained by this registry.
     pub fn event_sink(&self) -> Arc<dyn ExtensionEventSink> {
         Arc::clone(&self.event_sink)

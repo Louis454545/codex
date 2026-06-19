@@ -149,8 +149,7 @@ impl ChatWidget {
         let mut items: Vec<UserInput> = Vec::new();
 
         // Special-case: "!cmd" executes a local shell command instead of sending to the model.
-        if self.pending_request_user_message.is_none()
-            && shell_escape_policy == ShellEscapePolicy::Allow
+        if shell_escape_policy == ShellEscapePolicy::Allow
             && let Some(stripped) = text.strip_prefix('!')
         {
             let app_command = match self.submit_shell_command_with_history(stripped, &text) {
@@ -314,14 +313,18 @@ impl ChatWidget {
         self.maybe_apply_ide_context(&mut items);
 
         if let Some(request) = self.pending_request_user_message.take() {
+            let context_action =
+                std::mem::take(&mut self.pending_request_user_message_context_action);
             let op = AppCommand::user_message_tool_response(
                 request.turn_id.clone(),
                 ToolRequestUserMessageResponse {
                     items: items.clone(),
+                    context_action,
                 },
             );
             if !self.submit_op(op.clone()) {
                 self.pending_request_user_message = Some(request);
+                self.pending_request_user_message_context_action = context_action;
                 return (false, None);
             }
 

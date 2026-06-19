@@ -7,6 +7,16 @@
 use super::*;
 
 impl ChatWidget {
+    pub(crate) fn resolve_pending_user_message_for_goal(&mut self, objective: &str) -> bool {
+        if self.pending_request_user_message.is_none() {
+            return false;
+        }
+        self.submit_user_message(
+            format!("Continue working on the active goal: {objective}").into(),
+        );
+        true
+    }
+
     pub(super) fn handle_composer_input_result(
         &mut self,
         input_result: InputResult,
@@ -28,6 +38,7 @@ impl ChatWidget {
                     self.is_session_configured() && !self.is_plan_streaming_in_tui();
                 if should_submit_now {
                     if self.only_user_shell_commands_running()
+                        && self.pending_request_user_message.is_none()
                         && !user_message.text.starts_with('!')
                     {
                         self.queue_user_message(user_message);
@@ -170,13 +181,19 @@ impl ChatWidget {
         &mut self,
         text: String,
         mut collaboration_mode: CollaborationModeMask,
+        context_action: ToolRequestUserMessageContextAction,
     ) {
-        if collaboration_mode.mode == Some(ModeKind::Plan)
+        self.pending_request_user_message_context_action = context_action;
+        if self.pending_request_user_message.is_some() {
+            collaboration_mode.model = Some(self.current_model().to_string());
+            collaboration_mode.reasoning_effort = Some(self.effective_reasoning_effort());
+        } else if collaboration_mode.mode == Some(ModeKind::Plan)
             && let Some(effort) = self.config.plan_mode_reasoning_effort.clone()
         {
             collaboration_mode.reasoning_effort = Some(Some(effort));
         }
         if self.turn_lifecycle.agent_turn_running
+            && self.pending_request_user_message.is_none()
             && self.active_collaboration_mask.as_ref() != Some(&collaboration_mode)
         {
             self.add_error_message(

@@ -3,6 +3,12 @@
 use super::*;
 use crate::app_event::AppEvent;
 
+#[derive(Clone, Copy)]
+enum CollaborationModeInferencePolicy {
+    ApplyPreset,
+    PreserveCurrent,
+}
+
 impl ChatWidget {
     /// Set the approval policy in the widget's config copy.
     pub(crate) fn set_approval_policy(&mut self, policy: AskForApproval) {
@@ -661,7 +667,21 @@ impl ChatWidget {
     }
 
     pub(crate) fn set_collaboration_mask_from_user_action(&mut self, mask: CollaborationModeMask) {
-        self.set_collaboration_mask(mask);
+        self.set_collaboration_mask_with_inference_policy(
+            mask,
+            CollaborationModeInferencePolicy::ApplyPreset,
+        );
+        self.submit_collaboration_mode_settings_update();
+    }
+
+    pub(crate) fn set_collaboration_mask_preserving_inference_from_user_action(
+        &mut self,
+        mask: CollaborationModeMask,
+    ) {
+        self.set_collaboration_mask_with_inference_policy(
+            mask,
+            CollaborationModeInferencePolicy::PreserveCurrent,
+        );
         self.submit_collaboration_mode_settings_update();
     }
 
@@ -669,14 +689,32 @@ impl ChatWidget {
     ///
     /// When collaboration modes are enabled and a preset is selected,
     /// the current mode is attached to submissions as `Op::UserTurn { collaboration_mode: Some(...) }`.
-    pub(crate) fn set_collaboration_mask(&mut self, mut mask: CollaborationModeMask) {
+    #[cfg(test)]
+    pub(crate) fn set_collaboration_mask(&mut self, mask: CollaborationModeMask) {
+        self.set_collaboration_mask_with_inference_policy(
+            mask,
+            CollaborationModeInferencePolicy::ApplyPreset,
+        );
+    }
+
+    fn set_collaboration_mask_with_inference_policy(
+        &mut self,
+        mut mask: CollaborationModeMask,
+        inference_policy: CollaborationModeInferencePolicy,
+    ) {
         if !self.collaboration_modes_enabled() {
             return;
         }
         let previous_mode = self.active_mode_kind();
         let previous_model = self.current_model().to_string();
         let previous_effort = self.effective_reasoning_effort();
-        if mask.mode == Some(ModeKind::Plan)
+        if matches!(
+            inference_policy,
+            CollaborationModeInferencePolicy::PreserveCurrent
+        ) {
+            mask.model = Some(previous_model.clone());
+            mask.reasoning_effort = Some(previous_effort.clone());
+        } else if mask.mode == Some(ModeKind::Plan)
             && let Some(effort) = self.config.plan_mode_reasoning_effort.clone()
         {
             mask.reasoning_effort = Some(Some(effort));

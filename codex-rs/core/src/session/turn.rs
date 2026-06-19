@@ -101,6 +101,7 @@ use codex_protocol::protocol::ReasoningContentDeltaEvent;
 use codex_protocol::protocol::ReasoningRawContentDeltaEvent;
 use codex_protocol::protocol::TurnDiffEvent;
 use codex_protocol::protocol::WarningEvent;
+use codex_protocol::request_user_message::RequestUserMessageContextAction;
 use codex_protocol::user_input::UserInput;
 use codex_tools::ToolName;
 use codex_tools::filter_request_plugin_install_discoverable_tools_for_client;
@@ -144,6 +145,7 @@ pub(crate) async fn run_turn(
     prewarmed_client_session: Option<ModelClientSession>,
     cancellation_token: CancellationToken,
 ) -> Option<String> {
+    let mut turn_context = turn_context;
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
     // TODO(ccunningham): Pre-turn compaction runs before context updates and the
@@ -256,6 +258,46 @@ pub(crate) async fn run_turn(
                     called_request_user_message,
                 } = sampling_request_output;
                 can_drain_pending_input = true;
+                let context_action = if let Some(turn_state) = sess
+                    .input_queue
+                    .turn_state_for_sub_id(&sess.active_turn, &turn_context.sub_id)
+                    .await
+                {
+                    turn_state
+                        .lock()
+                        .await
+                        .take_request_user_message_context_action()
+                } else {
+                    None
+                };
+                if let Some(context_action) = context_action {
+                    let collaboration_mode = sess.collaboration_mode().await;
+                    if turn_context.collaboration_mode != collaboration_mode {
+                        let next_context =
+                            Arc::new(turn_context.with_collaboration_mode(collaboration_mode));
+                        sess.record_context_updates_and_set_reference_context_item(
+                            next_context.as_ref(),
+                        )
+                        .await;
+                        turn_context = next_context;
+                    }
+                    if context_action == RequestUserMessageContextAction::Compact
+                        && let Err(err) = run_auto_compact(
+                            &sess,
+                            &turn_context,
+                            &mut client_session,
+                            InitialContextInjection::BeforeLastUserMessage,
+                            CompactionReason::UserRequested,
+                            CompactionPhase::MidTurn,
+                        )
+                        .await
+                    {
+                        let error = err.to_codex_protocol_error();
+                        sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
+                            .await;
+                        return None;
+                    }
+                }
                 let (has_pending_input, token_status, estimated_token_count) = async {
                     let has_pending_input =
                         sess.input_queue.has_pending_input(&sess.active_turn).await;
@@ -487,7 +529,7 @@ async fn run_hooks_and_record_inputs(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn build_skills_and_plugins(
+pub(crate) async fn build_skills_and_plugins(
     sess: &Arc<Session>,
     turn_context: &TurnContext,
     input: &[TurnInput],
@@ -1290,6 +1332,14 @@ async fn request_user_message_enabled(sess: &Session, turn_context: &TurnContext
         && turn_context.app_server_client_name.as_deref() == Some("codex-tui")
         && !turn_context.session_source.is_non_root_agent()
         && sess.low_5h_quota_active().await
+        && !sess
+            .services
+            .extensions
+            .suppress_request_user_message(
+                &sess.services.session_extension_data,
+                &sess.services.thread_extension_data,
+            )
+            .await
 }
 
 fn request_user_message_base_instructions(

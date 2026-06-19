@@ -19,6 +19,12 @@ impl CollaborationModeInstructions {
                 instructions: instructions.clone(),
             })
     }
+
+    pub(crate) fn reset() -> Self {
+        Self {
+            instructions: "No collaboration-mode-specific instructions are active.".to_string(),
+        }
+    }
 }
 
 impl ContextualUserFragment for CollaborationModeInstructions {

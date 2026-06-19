@@ -446,6 +446,7 @@ impl ChatWidget {
             title: "Response requested".to_string(),
         });
         self.pending_request_user_message = Some(ev);
+        self.maybe_prompt_plan_implementation();
         self.set_ambient_pet_notification(
             crate::pets::PetNotificationKind::Waiting,
             /*body*/ None,

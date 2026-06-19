@@ -168,6 +168,7 @@ async fn plan_implementation_popup_yes_emits_submit_message_event() {
     let AppEvent::SubmitUserMessageWithMode {
         text,
         collaboration_mode,
+        context_action,
     } = event
     else {
         panic!("expected SubmitUserMessageWithMode, got {event:?}");
@@ -177,22 +178,36 @@ async fn plan_implementation_popup_yes_emits_submit_message_event() {
         plan_implementation::PLAN_IMPLEMENTATION_CODING_MESSAGE
     );
     assert_eq!(collaboration_mode.mode, Some(ModeKind::Default));
+    assert_eq!(
+        context_action,
+        codex_app_server_protocol::ToolRequestUserMessageContextAction::Continue
+    );
 }
 
 #[tokio::test]
-async fn plan_implementation_popup_clear_context_emits_clear_submit_event() {
+async fn plan_implementation_popup_clear_context_emits_compacting_tool_response() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5")).await;
     let plan_markdown = "- Step 1\n- Step 2\n";
     chat.on_plan_item_completed(plan_markdown.to_string());
     let _ = drain_insert_history(&mut rx);
+    chat.pending_request_user_message = Some(ToolRequestUserMessageParams {
+        thread_id: "thread-1".to_string(),
+        item_id: "call-1".to_string(),
+        turn_id: "turn-1".to_string(),
+    });
     chat.open_plan_implementation_prompt();
 
     chat.handle_key_event(KeyEvent::from(KeyCode::Down));
     chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
 
     let event = rx.try_recv().expect("expected AppEvent");
-    let AppEvent::ClearUiAndSubmitUserMessage { text } = event else {
-        panic!("expected ClearUiAndSubmitUserMessage, got {event:?}");
+    let AppEvent::SubmitUserMessageWithMode {
+        text,
+        collaboration_mode,
+        context_action,
+    } = event
+    else {
+        panic!("expected SubmitUserMessageWithMode, got {event:?}");
     };
     assert_eq!(
         text,
@@ -200,6 +215,11 @@ async fn plan_implementation_popup_clear_context_emits_clear_submit_event() {
         Implement the plan in a fresh context. Treat the plan as the source of \
         user intent, re-read files as needed, and carry the work through \
         implementation and verification.\n\n- Step 1\n- Step 2\n"
+    );
+    assert_eq!(collaboration_mode.mode, Some(ModeKind::Default));
+    assert_eq!(
+        context_action,
+        codex_app_server_protocol::ToolRequestUserMessageContextAction::Compact
     );
 }
 
@@ -213,6 +233,7 @@ async fn plan_implementation_clear_context_requires_default_mode_and_plan() {
         /*default_mask*/ None,
         Some("- Step\n"),
         /*clear_context_usage_label*/ None,
+        /*responding_to_user_message_tool*/ false,
     );
     assert_eq!(
         params.items[1].disabled_reason.as_deref(),
@@ -223,6 +244,7 @@ async fn plan_implementation_clear_context_requires_default_mode_and_plan() {
         Some(default_mask.clone()),
         /*plan_markdown*/ None,
         /*clear_context_usage_label*/ None,
+        /*responding_to_user_message_tool*/ false,
     );
     assert_eq!(
         params.items[1].disabled_reason.as_deref(),
@@ -233,6 +255,7 @@ async fn plan_implementation_clear_context_requires_default_mode_and_plan() {
         Some(default_mask.clone()),
         Some("  \n"),
         /*clear_context_usage_label*/ None,
+        /*responding_to_user_message_tool*/ false,
     );
     assert_eq!(
         params.items[1].disabled_reason.as_deref(),
@@ -243,6 +266,7 @@ async fn plan_implementation_clear_context_requires_default_mode_and_plan() {
         Some(default_mask.clone()),
         Some("- Step\n"),
         /*clear_context_usage_label*/ None,
+        /*responding_to_user_message_tool*/ false,
     );
     assert_eq!(params.items[1].disabled_reason, None);
     assert!(!params.items[1].actions.is_empty());
@@ -256,6 +280,7 @@ async fn plan_implementation_clear_context_requires_default_mode_and_plan() {
         Some(default_mask),
         Some("- Step\n"),
         Some("89% used"),
+        /*responding_to_user_message_tool*/ false,
     );
     assert_eq!(
         params.items[1].description.as_deref(),
@@ -271,7 +296,11 @@ async fn submit_user_message_with_mode_sets_coding_collaboration_mode() {
 
     let default_mode = collaboration_modes::default_mode_mask(chat.model_catalog.as_ref())
         .expect("expected default collaboration mode");
-    chat.submit_user_message_with_mode("Implement the plan.".to_string(), default_mode);
+    chat.submit_user_message_with_mode(
+        "Implement the plan.".to_string(),
+        default_mode,
+        Default::default(),
+    );
 
     match next_submit_op(&mut op_rx) {
         Op::UserTurn {
@@ -607,6 +636,55 @@ async fn handle_request_user_message_sets_pending_notification_and_request() {
 }
 
 #[tokio::test]
+async fn bang_command_stays_local_while_user_message_tool_is_pending() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.handle_request_user_message_now(ToolRequestUserMessageParams {
+        thread_id: "thread-1".to_string(),
+        item_id: "call-1".to_string(),
+        turn_id: "turn-1".to_string(),
+    });
+    chat.bottom_pane
+        .set_composer_text("!echo local".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        op_rx.try_recv(),
+        Ok(Op::RunUserShellCommand { command }) if command == "echo local"
+    );
+    assert!(chat.pending_request_user_message.is_some());
+}
+
+#[tokio::test]
+async fn active_goal_resolves_pending_user_message_tool_immediately() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.handle_request_user_message_now(ToolRequestUserMessageParams {
+        thread_id: "thread-1".to_string(),
+        item_id: "call-1".to_string(),
+        turn_id: "turn-1".to_string(),
+    });
+
+    assert!(chat.resolve_pending_user_message_for_goal("ship the feature"));
+
+    let Op::UserMessageToolResponse { id, response } =
+        op_rx.try_recv().expect("expected a tool response op")
+    else {
+        panic!("expected UserMessageToolResponse");
+    };
+    assert_eq!(id, "turn-1");
+    assert_eq!(
+        response.items,
+        vec![UserInput::Text {
+            text: "Continue working on the active goal: ship the feature".to_string(),
+            text_elements: Vec::new(),
+        }]
+    );
+    assert_eq!(response.context_action, Default::default());
+}
+
+#[tokio::test]
 async fn request_user_input_notification_overrides_pending_agent_turn_complete_notification() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
 
@@ -731,7 +809,11 @@ async fn submit_user_message_with_mode_errors_when_mode_changes_during_running_t
 
     let default_mode = collaboration_modes::default_mask(chat.model_catalog.as_ref())
         .expect("expected default collaboration mode");
-    chat.submit_user_message_with_mode("Implement the plan.".to_string(), default_mode);
+    chat.submit_user_message_with_mode(
+        "Implement the plan.".to_string(),
+        default_mode,
+        Default::default(),
+    );
 
     assert_eq!(chat.active_collaboration_mode_kind(), ModeKind::Plan);
     assert!(chat.input_queue.queued_user_messages.is_empty());
@@ -779,7 +861,11 @@ async fn submit_user_message_with_mode_allows_same_mode_during_running_turn() {
     chat.set_collaboration_mask(plan_mask.clone());
     chat.on_task_started();
 
-    chat.submit_user_message_with_mode("Continue planning.".to_string(), plan_mask);
+    chat.submit_user_message_with_mode(
+        "Continue planning.".to_string(),
+        plan_mask,
+        Default::default(),
+    );
 
     assert_eq!(chat.active_collaboration_mode_kind(), ModeKind::Plan);
     assert!(chat.input_queue.queued_user_messages.is_empty());
@@ -813,7 +899,11 @@ async fn submit_user_message_with_mode_submits_when_plan_stream_is_not_active() 
     let expected_mode = default_mode
         .mode
         .expect("expected default collaboration mode kind");
-    chat.submit_user_message_with_mode("Implement the plan.".to_string(), default_mode);
+    chat.submit_user_message_with_mode(
+        "Implement the plan.".to_string(),
+        default_mode,
+        Default::default(),
+    );
 
     assert_eq!(chat.active_collaboration_mode_kind(), expected_mode);
     assert!(chat.input_queue.queued_user_messages.is_empty());
@@ -1420,6 +1510,28 @@ async fn plan_slash_command_switches_to_plan_mode() {
     }
     assert_eq!(chat.active_collaboration_mode_kind(), ModeKind::Plan);
     assert_eq!(chat.current_collaboration_mode(), &initial);
+}
+
+#[tokio::test]
+async fn plan_slash_command_preserves_inference_while_user_message_tool_is_pending() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.set_feature_enabled(Feature::CollaborationModes, /*enabled*/ true);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+    chat.set_plan_mode_reasoning_effort(Some(ReasoningEffortConfig::Low));
+    handle_turn_started(&mut chat, "turn-1");
+    chat.handle_request_user_message_now(ToolRequestUserMessageParams {
+        thread_id: "thread-1".to_string(),
+        item_id: "call-1".to_string(),
+        turn_id: "turn-1".to_string(),
+    });
+    let model = chat.current_model().to_string();
+    let effort = chat.effective_reasoning_effort();
+
+    chat.dispatch_command(SlashCommand::Plan);
+
+    assert_eq!(chat.active_collaboration_mode_kind(), ModeKind::Plan);
+    assert_eq!(chat.current_model(), model);
+    assert_eq!(chat.effective_reasoning_effort(), effort);
 }
 
 #[tokio::test]

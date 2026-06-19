@@ -1516,4 +1516,15 @@ pub struct ToolRequestUserMessageParams {
 /// EXPERIMENTAL. Response payload containing a normal user composer message.
 pub struct ToolRequestUserMessageResponse {
     pub items: Vec<UserInput>,
+    #[serde(default)]
+    pub context_action: ToolRequestUserMessageContextAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ToolRequestUserMessageContextAction {
+    #[default]
+    Continue,
+    Compact,
 }

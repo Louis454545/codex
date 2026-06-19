@@ -52,6 +52,13 @@
       ],
       "type": "object"
     },
+    "ToolRequestUserMessageContextAction": {
+      "enum": [
+        "continue",
+        "compact"
+      ],
+      "type": "string"
+    },
     "UserInput": {
       "oneOf": [
         {
@@ -197,6 +204,14 @@
   },
   "description": "EXPERIMENTAL. Response payload containing a normal user composer message.",
   "properties": {
+    "contextAction": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ToolRequestUserMessageContextAction"
+        }
+      ],
+      "default": "continue"
+    },
     "items": {
       "items": {
         "$ref": "#/definitions/UserInput"

@@ -901,6 +901,7 @@ pub(crate) enum AppEvent {
     SubmitUserMessageWithMode {
         text: String,
         collaboration_mode: CollaborationModeMask,
+        context_action: codex_app_server_protocol::ToolRequestUserMessageContextAction,
     },
 
     /// Open the approval popup.

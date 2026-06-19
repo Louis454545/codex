@@ -1784,22 +1784,39 @@ async fn on_request_user_message_response(
         Ok(Err(err)) if is_turn_transition_server_request_error(&err) => return,
         Ok(Err(err)) => {
             error!("request failed with client error: {err:?}");
-            serde_json::to_value(ToolRequestUserMessageResponse { items: Vec::new() })
-                .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
+            serde_json::to_value(ToolRequestUserMessageResponse {
+                items: Vec::new(),
+                context_action: Default::default(),
+            })
+            .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
         }
         Err(err) => {
             error!("request failed: {err:?}");
-            serde_json::to_value(ToolRequestUserMessageResponse { items: Vec::new() })
-                .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
+            serde_json::to_value(ToolRequestUserMessageResponse {
+                items: Vec::new(),
+                context_action: Default::default(),
+            })
+            .unwrap_or_else(|_| serde_json::json!({ "items": [] }))
         }
     };
 
     let response =
         serde_json::from_value::<ToolRequestUserMessageResponse>(value).unwrap_or_else(|err| {
             error!("failed to deserialize ToolRequestUserMessageResponse: {err}");
-            ToolRequestUserMessageResponse { items: Vec::new() }
+            ToolRequestUserMessageResponse {
+                items: Vec::new(),
+                context_action: Default::default(),
+            }
         });
     let response = CoreRequestUserMessageResponse {
+        context_action: match response.context_action {
+            codex_app_server_protocol::ToolRequestUserMessageContextAction::Continue => {
+                codex_protocol::request_user_message::RequestUserMessageContextAction::Continue
+            }
+            codex_app_server_protocol::ToolRequestUserMessageContextAction::Compact => {
+                codex_protocol::request_user_message::RequestUserMessageContextAction::Compact
+            }
+        },
         items: response
             .items
             .into_iter()

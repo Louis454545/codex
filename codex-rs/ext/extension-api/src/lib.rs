@@ -35,6 +35,7 @@ pub use contributors::ApprovalReviewContributor;
 pub use contributors::ConfigContributor;
 pub use contributors::ContextContributor;
 pub use contributors::ExtensionFuture;
+pub use contributors::InteractiveHandoffPolicyContributor;
 pub use contributors::McpServerContribution;
 pub use contributors::McpServerContributionContext;
 pub use contributors::McpServerContributor;

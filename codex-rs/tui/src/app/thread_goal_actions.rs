@@ -212,7 +212,12 @@ impl App {
                     format!("Goal {}", goal_status_label(response.goal.status)),
                     Some(goal_usage_summary(&response.goal)),
                 );
-                self.chat_widget.maybe_send_next_queued_input();
+                if !self
+                    .chat_widget
+                    .resolve_pending_user_message_for_goal(&response.goal.objective)
+                {
+                    self.chat_widget.maybe_send_next_queued_input();
+                }
             }
             Err(err) => {
                 cleanup_materialized_goal_files(app_server, output_dir).await;
@@ -245,10 +250,16 @@ impl App {
         }
 
         match result {
-            Ok(response) => self.chat_widget.add_info_message(
-                format!("Goal {}", goal_status_label(response.goal.status)),
-                Some(goal_usage_summary(&response.goal)),
-            ),
+            Ok(response) => {
+                self.chat_widget.add_info_message(
+                    format!("Goal {}", goal_status_label(response.goal.status)),
+                    Some(goal_usage_summary(&response.goal)),
+                );
+                if response.goal.status == ThreadGoalStatus::Active {
+                    self.chat_widget
+                        .resolve_pending_user_message_for_goal(&response.goal.objective);
+                }
+            }
             Err(err) => self
                 .chat_widget
                 .add_error_message(thread_goal_error_message("update", &err)),

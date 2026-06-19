@@ -1,3 +1,4 @@
+use codex_app_server_protocol::ToolRequestUserMessageContextAction;
 use codex_protocol::config_types::CollaborationModeMask;
 
 use crate::app_event::AppEvent;
@@ -29,6 +30,7 @@ pub(super) fn selection_view_params(
     default_mask: Option<CollaborationModeMask>,
     plan_markdown: Option<&str>,
     clear_context_usage_label: Option<&str>,
+    responding_to_user_message_tool: bool,
 ) -> SelectionViewParams {
     let (implement_actions, implement_disabled_reason) = match default_mask.clone() {
         Some(mask) => {
@@ -37,6 +39,7 @@ pub(super) fn selection_view_params(
                 tx.send(AppEvent::SubmitUserMessageWithMode {
                     text: user_text.clone(),
                     collaboration_mode: mask.clone(),
+                    context_action: ToolRequestUserMessageContextAction::Continue,
                 });
             })];
             (actions, None)
@@ -53,14 +56,24 @@ pub(super) fn selection_view_params(
             Vec::new(),
             Some(PLAN_IMPLEMENTATION_DEFAULT_UNAVAILABLE.to_string()),
         ),
-        (Some(_), Some(plan_markdown)) if !plan_markdown.trim().is_empty() => {
+        (Some(mask), Some(plan_markdown)) if !plan_markdown.trim().is_empty() => {
             let user_text =
                 format!("{PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n{plan_markdown}");
-            let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
-                tx.send(AppEvent::ClearUiAndSubmitUserMessage {
-                    text: user_text.clone(),
-                });
-            })];
+            let actions: Vec<SelectionAction> = if responding_to_user_message_tool {
+                vec![Box::new(move |tx| {
+                    tx.send(AppEvent::SubmitUserMessageWithMode {
+                        text: user_text.clone(),
+                        collaboration_mode: mask.clone(),
+                        context_action: ToolRequestUserMessageContextAction::Compact,
+                    });
+                })]
+            } else {
+                vec![Box::new(move |tx| {
+                    tx.send(AppEvent::ClearUiAndSubmitUserMessage {
+                        text: user_text.clone(),
+                    });
+                })]
+            };
             (actions, None)
         }
         (Some(_), _) => (
@@ -69,10 +82,17 @@ pub(super) fn selection_view_params(
         ),
     };
 
-    let clear_context_description = clear_context_usage_label.map_or_else(
-        || "Fresh thread with this plan.".to_string(),
-        |label| format!("Fresh thread. Context: {label}."),
-    );
+    let clear_context_description = if responding_to_user_message_tool {
+        clear_context_usage_label.map_or_else(
+            || "Compact this thread, then implement.".to_string(),
+            |label| format!("Compact this thread. Context: {label}."),
+        )
+    } else {
+        clear_context_usage_label.map_or_else(
+            || "Fresh thread with this plan.".to_string(),
+            |label| format!("Fresh thread. Context: {label}."),
+        )
+    };
 
     SelectionViewParams {
         title: Some(PLAN_IMPLEMENTATION_TITLE.to_string()),

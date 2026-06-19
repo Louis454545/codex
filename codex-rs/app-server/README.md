@@ -1453,7 +1453,7 @@ When the client responds to `item/tool/requestUserInput`, the server emits `serv
 
 ### request_user_message
 
-When the client receives `item/tool/requestUserMessage`, it should collect the next normal user-composer submission and respond with `{ items }`, where `items` is the same `UserInput[]` shape used for turn input. The server emits `serverRequest/resolved` with `{ threadId, requestId }` after the response or if the pending request is cleared by turn start, turn completion, or turn interruption.
+When the client receives `item/tool/requestUserMessage`, it should collect the next normal user-composer submission and respond with `{ items, contextAction }`, where `items` is the same `UserInput[]` shape used for turn input. `contextAction` is `continue` for a normal response or `compact` when the same turn must be compacted before model execution continues; omitted values default to `continue` for compatibility. The server emits `serverRequest/resolved` with `{ threadId, requestId }` after the response or if the pending request is cleared by turn start, turn completion, or turn interruption.
 
 ### Attestation generation
 

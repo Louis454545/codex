@@ -522,6 +522,7 @@ async fn replay_thread_snapshot_restores_draft_and_queued_input() {
             reasoning_effort: None,
             developer_instructions: None,
         },
+        Default::default(),
     );
     let expected_input_state = app
         .chat_widget

@@ -89,8 +89,18 @@ impl ChatWidget {
             );
             return false;
         }
+        if self.bottom_pane.is_task_running() && self.pending_request_user_message.is_none() {
+            self.add_error_message(
+                "Cannot switch collaboration mode while a turn is running.".to_string(),
+            );
+            return false;
+        }
         if let Some(mask) = collaboration_modes::plan_mask(self.model_catalog.as_ref()) {
-            self.set_collaboration_mask_from_user_action(mask);
+            if self.pending_request_user_message.is_some() {
+                self.set_collaboration_mask_preserving_inference_from_user_action(mask);
+            } else {
+                self.set_collaboration_mask_from_user_action(mask);
+            }
             true
         } else {
             self.add_info_message(
